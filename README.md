@@ -53,15 +53,19 @@ Each stdout line is one protocol event. Diagnostics are written to stderr.
 
 ## Vendor bootstrap
 
-1. Point `upstream/hermes-source.json` at the approved full fork and commit.
-2. Build `upstream/hermes-runtime-files.txt` through real import/resource tracing and
+1. Use the Hermes source commit pinned in `upstream/hermes-source.json`; it is retained in
+   this repository's Git ancestry.
+2. Create a temporary clean worktree/archive at that commit, then build
+   `upstream/hermes-runtime-files.txt` through real import/resource tracing and
    capability tests.
 3. Generate the snapshot:
 
 ```bash
-python scripts/sync-hermes-runtime.py /path/to/networkclaw-hermes-fork
+python scripts/sync-hermes-runtime.py /path/to/pinned-hermes-worktree
 python scripts/verify-hermes-vendor.py
 ```
 
 The sync script copies only allowlisted files, applies `upstream/patches/*.patch`, and writes
 `upstream/hermes-vendor-manifest.json` with the source commit and post-patch SHA-256 hashes.
+The current script accepts the temporary worktree path explicitly; H0 will remove this manual
+step by creating the worktree/archive from the pinned ancestor commit itself.

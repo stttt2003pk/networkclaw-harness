@@ -2,7 +2,8 @@
 
 > 状态：前序设计，已演进为 [Hermes Headless Harness 内核设计](./hermes-headless-harness.md)。本文保留语义模型和演进背景，不再作为 coordinator 部署位置与执行权归属的当前设计依据。
 > 日期：2026-09-08。
-> 实施计划：[coordinator_kernal 总览与十模块任务](../../.codebuddy/plan/coordinator_kernal/00_overview.md)（计划草案，未实施）。
+> 历史实施计划：NetworkClaw 仓库的 `.codebuddy/plan/coordinator_kernal/00_overview.md`；
+> 该文件不随 Harness 交付，本仓当前计划以 [`plan/`](./plan/) 为准。
 > 需求来源：本轮产品设计讨论——保持用户亲和与三层架构，以丰富 coordinator LLM 语义为改造中心，支持可见、可交互、可交付的自主工作过程。
 > 归档：按本次要求放置于 `docs/architecture`。实施前关联对应 PRD、拆解开发计划，并将涉及执行控制、持久化权威边界的决策记录为 ADR；本次仅交付设计，不修改运行代码、API 或部署。
 
@@ -21,7 +22,8 @@ lobby -> chatrtmgr -> chatsvc A -> NetworkClaw Headless Harness A
                          host          coordinator / agent 内核
 ```
 
-- Harness 是会话内部唯一的模型决策、计划推进、工具调度、上下文和恢复权威。
+- Harness 是会话内部唯一的模型决策、计划推进、工具调度和上下文内核；Lobby durable
+  边界保存 session 语义权威，workspace 保存带 cursor/epoch 的可校验运行快照和 artifact。
 - `chatsvc` 负责宿主协议、进程生命周期、会话输入输出转发以及与既有链路的适配；它不再
   保留一套并行 coordinator loop，也不解析模型文本来推断执行状态。
 - 进程关系固定为 `chatsvc : Harness = 1 : 1`；一个专属 Harness 可以承载所属 chatsvc 的
@@ -59,15 +61,15 @@ lobby -> chatrtmgr -> chatsvc A -> NetworkClaw Headless Harness A
 
 | 能力 | 现有依据 | 本次演进方向 |
 |---|---|---|
-| 自驱动模型—工具循环 | [`TurnEventLoop`](../../internal/chatsvc/ai/loop.go)，模型流末判断 ToolCalls、工具执行后回灌 | 保留执行内核，在既有控制点增加语义契约和反馈，不另建争夺控制权的 FSM |
-| Coordinator 装配 | [`handler.go`](../../internal/chatsvc/ai/handler.go)，按请求追加控制工具和观察视图 | 扩展行为能力与每轮观察，避免只靠更长 prompt |
-| 能力发现与委派 | [`dispatch_tool.go`](../../internal/chatsvc/ai/dispatch_tool.go)、现有 `search_agents` | 保留批量派遣、授权快照、结构化拒绝；补工具发现、结果检查及可控交互 |
-| 约束与预算 | [`dispatch_guard.go`](../../internal/chatsvc/ai/dispatch_guard.go)、[`wave_budget.go`](../../internal/chatsvc/ai/wave_budget.go) | 继承资源、深度、重复派遣和预算约束；补无进展检测与跨重试总预算 |
-| 澄清 | [`ask_user.go`](../../internal/chatsvc/ai/ask_user.go)，发出澄清状态并提示模型收尾 | 建立问题身份、答案关联及运行时等待边界；当前提示模型收尾不等于确定性挂起 |
-| 过程流 | [`stream_events.go`](../../internal/chatsvc/ai/stream_events.go)，text/reasoning/tool/turn_end/run_state 及 agent 归属 | 扩展计划、审批、证据、交付与持久记录；当前观测钩子不能直接充当可靠事实账本 |
-| Session Memory | [`memory_projector.go`](../../internal/chatsvc/ai/memory_projector.go)、[Harness 已实施说明](./claude-code-harness.md) | 保留 Projector/Validator 和 lobby 权威写入；记忆摘要不能代替完整语义事实 |
-| 历史加载 | [`lobby_history.go`](../../internal/chatsvc/session/lobby_history.go)，Redis 缓存、lobby durable 历史回源 | 从消息历史扩展到语义资产；当前 role/content 加载不是完整工具轨迹重建 |
-| 边做边看 | [Turn 事件循环设计](./live-commentary-loop.md) | 保留流末路由、实时 commentary 与现有卡片，增加语义驱动展示 |
+| 自驱动模型—工具循环 | NetworkClaw `internal/chatsvc/ai/loop.go`，模型流末判断 ToolCalls、工具执行后回灌 | 保留执行内核，在既有控制点增加语义契约和反馈，不另建争夺控制权的 FSM |
+| Coordinator 装配 | NetworkClaw `internal/chatsvc/ai/handler.go`，按请求追加控制工具和观察视图 | 扩展行为能力与每轮观察，避免只靠更长 prompt |
+| 能力发现与委派 | NetworkClaw `dispatch_tool.go`、现有 `search_agents` | 保留批量派遣、授权快照、结构化拒绝；补工具发现、结果检查及可控交互 |
+| 约束与预算 | NetworkClaw `dispatch_guard.go`、`wave_budget.go` | 继承资源、深度、重复派遣和预算约束；补无进展检测与跨重试总预算 |
+| 澄清 | NetworkClaw `ask_user.go`，发出澄清状态并提示模型收尾 | 建立问题身份、答案关联及运行时等待边界；当前提示模型收尾不等于确定性挂起 |
+| 过程流 | NetworkClaw `stream_events.go`，text/reasoning/tool/turn_end/run_state 及 agent 归属 | 扩展计划、审批、证据、交付与持久记录；当前观测钩子不能直接充当可靠事实账本 |
+| Session Memory | NetworkClaw `memory_projector.go` 和原 Coordinator Harness 设计 | 保留 Projector/Validator 和 Lobby 权威写入；记忆摘要不能代替完整语义事实 |
+| 历史加载 | NetworkClaw `session/lobby_history.go`，Redis 缓存、Lobby durable 历史回源 | 从消息历史扩展到语义资产；当前 role/content 加载不是完整工具轨迹重建 |
+| 边做边看 | NetworkClaw `live-commentary-loop.md` 的 Turn 事件循环设计 | 保留流末路由、实时 commentary 与现有卡片，增加语义驱动展示 |
 
 当前基础已经支持递归反馈的雏形。主要缺口是计划、交互、审批、验证、纠错和交付之间缺少完整且稳定的行为契约，以及过程资产的长期保存与加载。
 
@@ -395,10 +397,9 @@ flowchart LR
 
 ## 13. 相关文档与设计自查
 
-- [现有 Coordinator Harness](./claude-code-harness.md)：沿用循环、工具控制入口、guard、agent 归属与 Memory；本文扩展其语义范围，不将已实施状态改写为本次功能已完成。
-- [边做边看](./live-commentary-loop.md)：沿用事件循环；本设计提出过程持久化，属于对其旧版“不保存中间 commentary”策略的后续演进。
-- [Chat Service](./chat-service-design.md)、[chatrtmgr](./chat-runtime-manager-design.md)、[Lobby](./lobby-design.md)：服务边界保持。
-- [亲和性调度](./affinity.md)：用户亲和与复用/新建裁决保持。
+- NetworkClaw `docs/architecture/claude-code-harness.md`：沿用循环、工具控制入口、guard、agent 归属与 Memory；该外部历史文档不随 Harness 发布。
+- NetworkClaw `docs/architecture/live-commentary-loop.md`：沿用事件循环；本设计提出过程持久化，属于对其旧版“不保存中间 commentary”策略的后续演进。
+- NetworkClaw 的 Chat Service、chatrtmgr、Lobby 和 affinity 设计：服务边界、用户亲和与复用/新建裁决保持；本仓当前合同已在主设计和进程拓扑中自包含。
 
 设计自查：
 

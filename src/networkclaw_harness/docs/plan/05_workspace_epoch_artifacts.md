@@ -4,7 +4,7 @@
 
 模块状态：🟨 已有目录与路径 guard 基础
 
-前置依赖：04 稳定的 1:1 进程生命周期。
+前置依赖：01 owner/epoch/authority 合同；03 session/lease 协议基础。可与 04 并行，组合故障验收在 12 完成。
 
 状态图例：✅ 已完成；🟨 待确认或已有基础但未验收；⬜ 未开始。
 
@@ -14,10 +14,12 @@
 - ✅ 创建 `session-state`、`artifacts/*`、`summaries`、`indexes` 和 `tmp` 基础布局。
 - ✅ 拒绝绝对子路径、`..` 和符号链接逃逸。
 - ⬜ 加入 tenant/session 所有权元数据和目录格式版本。
+- ⬜ checkpoint 保存 durable cursor、owner 和 execution epoch；失配时不得直接恢复执行。
 
 ## 05.2 Execution epoch
 
-- ⬜ 定义 epoch 的签发方、存储方、续期、失效和比较规则。
+- ✅ 冻结 Lobby/session durable 边界签发跨节点 owner/epoch/lease，chatrtmgr 维护本地进程存活真值。
+- ⬜ 实现 epoch CAS、lease 续期/失效/比较和 host 更新规则。
 - ⬜ 所有状态写入和外部副作用前验证当前 epoch。
 - ⬜ 防止旧进程、迟到 callback 和子线程绕过 epoch 检查。
 - ⬜ 设计 A→B→A 节点切换和旧 owner 拒写测试。
@@ -26,6 +28,7 @@
 
 - ⬜ 定义 raw、normalized、evidence、generated artifact 元数据和内容寻址策略。
 - ⬜ 支持原子写、校验 hash、大小/MIME、来源、引用和生命周期。
+- ⬜ Lobby 保存 artifact durable metadata、hash 和引用；workspace 保存内容，禁止双写同一权威事实。
 - ⬜ 大型工具输出只保存 artifact，模型接收摘要、索引和必要片段。
 - ⬜ `tmp/` 不得保存恢复所需的唯一事实。
 
@@ -45,4 +48,3 @@
 
 - ⬜ 路径逃逸、符号链接、并发写、epoch 失效和配额测试通过。
 - ⬜ 大资料写入、索引、局部查询和 artifact 引用 E2E 通过后，将状态更新为 ✅。
-

@@ -1,6 +1,5 @@
 # H0 bootstrap allowlist.
 #
 # Add paths only after they are proven necessary by real imports, dynamic resource tracing,
-# capability tests and recovery tests against the pinned full fork. An empty list is
+# capability tests and recovery tests against the pinned Hermes ancestor commit. An empty list is
 # intentional: vendor/hermes must not imply a validated runtime snapshot before H0 passes.
-

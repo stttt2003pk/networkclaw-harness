@@ -17,6 +17,7 @@
 ## 12.2 Recovery reconciler
 
 - ⬜ 加载 session 状态、计划、交互、工具 intent/result、artifact 和 epoch。
+- ⬜ 先加载 Lobby durable cursor/epoch，再校验 workspace checkpoint；失配时重建、降级或阻塞。
 - ⬜ 检查 schema/version 兼容并执行可审计迁移。
 - ⬜ 对不完整写入、缺失 artifact 和 hash 不匹配产生明确诊断。
 
@@ -37,9 +38,9 @@
 - ⬜ 在 tool intent 前、外部副作用后、result 持久化前等故障点注入崩溃。
 - ⬜ 使用同一 workspace 在新 1:1 进程对中恢复。
 - ⬜ 执行 A→B→A 节点切换、epoch fencing 和双写拒绝测试。
+- ⬜ 验证 Lobby lease CAS、chatrtmgr 本地存活、chatsvc host 续租和 Harness fail-closed 的组合行为。
 
 ## 12.6 模块出口
 
 - ⬜ H4 恢复闭环通过，所有未知结果均不会盲目重放。
 - ⬜ 故障注入和节点迁移测试可重复通过后，将状态更新为 ✅。
-

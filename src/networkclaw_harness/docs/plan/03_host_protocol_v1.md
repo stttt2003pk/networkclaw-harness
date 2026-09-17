@@ -13,11 +13,14 @@
 - ✅ 建立 `protocol_version`、`type`、`request_id`、`session_id`、`turn_id`、`sequence`、`occurred_at` 和 `payload` 基础信封。
 - ✅ 实现输入校验、未知版本拒绝、单调输出 sequence 和 JSONL 单帧输出。
 - ✅ 区分 `request.accepted` 与后续完成或失败事件。
-- ⬜ 增加 `run_id`、`event_id`、`invocation_id`、`parent_item_id` 等已冻结身份字段。
+- ✅ 冻结现网稳定字段为兼容基线：request/user/session/tenant、类型、payload、trace、deadline、metadata、sequence、end 和 error。
+- ⬜ 将当前进程全局 sequence 改为 request-scoped 流式 sequence，并为 durable history 单独使用 cursor。
+- ⬜ 增加 `run_id`、`event_id`、`invocation_id`、`parent_item_id` 等可选扩展字段，不要求旧中继解析。
+- ⬜ 按类型规定 tenant/user/session 必填性；health/capabilities/shutdown 不伪造 session。
 
 ## 03.2 命令和事件目录
 
-- ⬜ 冻结 session、user control、clarification、approval、health、capabilities、shutdown 命令。
+- ⬜ 冻结 session、lease update、user control、clarification、approval、health、capabilities、shutdown 命令。
 - ⬜ 冻结 assistant、plan、tool、subagent、artifact、warning、error、heartbeat 和终态事件。
 - ⬜ 为每个类型规定必填字段、合法状态转换、幂等规则和错误码。
 - ⬜ 将控制类未知语义设为 fail closed，展示类未知语义允许显式降级。
@@ -40,6 +43,7 @@
 - ✅ 已有健康查询、session open、user input 明确失败和 shutdown 的最小行为测试。
 - ⬜ 覆盖 malformed JSON、非法关联 ID、重复命令、乱序和迟到事件。
 - ⬜ 覆盖并发多 session 下 sequence、关联和隔离。
+- ⬜ 覆盖同 session 普通输入排队、控制帧抢占和跨 session 公平调度。
 - ⬜ 覆盖 chatsvc 断管、Harness 断管和半写帧。
 
 ## 03.6 模块出口
@@ -47,4 +51,3 @@
 - ⬜ Host 协议 v1 schema、错误目录和兼容策略完成评审。
 - ⬜ 模拟 chatsvc 可独立驱动全部命令和事件路径。
 - ⬜ 协议冻结后将模块状态更新为 ✅，后续模块不得绕开协议直接耦合 chatsvc 内部代码。
-

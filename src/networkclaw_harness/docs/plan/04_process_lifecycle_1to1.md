@@ -4,7 +4,7 @@
 
 模块状态：⬜ 未开始
 
-前置依赖：03 Host 协议 v1。
+前置依赖：01 owner/epoch/lease 合同；03 Host 协议基础。与 05 可并行，旧 epoch 拒写的组合验收在 12 完成。
 
 状态图例：✅ 已完成；🟨 待确认或已有基础但未验收；⬜ 未开始。
 
@@ -14,6 +14,7 @@
 - ⬜ chatsvc 启动专属 Harness，完成 protocol/capabilities/health 握手后才开放 agent 能力。
 - ⬜ 规定 eager start 与首个 AI turn lazy start 的配置和相同行为合同。
 - ⬜ 确保同一 chatsvc 不会并发拉起两个有效 Harness owner。
+- ⬜ chatsvc 将 tenant/user/session owner、epoch、lease 和 workspace 绑定传给专属 Harness。
 
 ## 04.2 运行监控
 
@@ -26,12 +27,13 @@
 - ⬜ chatsvc draining 后禁止开启新 turn。
 - ⬜ 定义运行 turn 的完成、取消、安全检查点和有界 shutdown 顺序。
 - ⬜ 正常关闭等待 Harness 确认，超时后升级为强制终止。
+- ⬜ host 管道断开或 lease 续租失败时，Harness 在有界宽限期内停止新模型步骤和副作用。
 
 ## 04.4 孤儿进程防护
 
 - ⬜ 选择并实现 parent-death signal、进程组、cgroup/container 或等价回收机制。
 - ⬜ chatsvc 崩溃、SIGKILL、OOM 和节点终止后均不遗留可继续执行的 Harness。
-- ⬜ 旧 Harness 即使短暂存活，也必须因 execution epoch 失效停止写入和副作用。
+- ⬜ 旧 Harness 即使短暂存活，也必须在 host 断连或 lease 到期后停止接受新动作；durable/外部 fencing 在 05/12 验收。
 
 ## 04.5 生命周期 E2E
 
@@ -41,6 +43,5 @@
 
 ## 04.6 模块出口
 
-- ⬜ 1:1 所有权、无孤儿、故障隔离和有界排水全部通过 E2E。
+- ⬜ 1:1 所有权、无孤儿、故障隔离、lease 失联停止和有界排水全部通过 E2E。
 - ⬜ 模块完成后将状态更新为 ✅，后续会话和恢复能力只在该生命周期容器内运行。
-

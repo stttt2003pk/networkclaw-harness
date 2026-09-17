@@ -30,17 +30,19 @@ chatrtmgr
 2. `Harness : session = 1 : N`，上限与宿主分配的会话容量和资源策略一致。
 3. 不允许多个 chatsvc 连接或复用同一个 Harness 进程。
 4. 不允许 Harness 在 chatsvc 退出后作为孤儿进程继续接受或执行任务。
-5. `chatrtmgr` 仍是 chatsvc 调度、用户亲和、节点容量和 session execution lease 的权威；
-   Harness 不升级为 chatrtmgr 内的节点级共享服务。
+5. Lobby 仍是 session durable 归属和跨节点 execution lease 的权威；`chatrtmgr` 仍是
+   chatsvc 调度、用户亲和、节点容量和本地进程存活的权威。Harness 不升级为
+   chatrtmgr 内的节点级共享服务。
 
 ## 2. 职责和所有权
 
 | 对象 | 职责 |
 | --- | --- |
-| `chatrtmgr` | 启停、排水、监控和重启 chatsvc；维护用户亲和、节点容量与 session execution lease |
-| `chatsvc` | Harness 的进程 owner 和协议 host；启动、监控、排水并回收专属 Harness；转发输入、控制和结构化事件 |
+| Lobby/session durable 边界 | 保存 session 归属；以 CAS 签发和更新 owner、execution epoch 与有界 lease |
+| `chatrtmgr` | 启停、排水、监控和重启 chatsvc；维护用户亲和、节点容量与本地进程存活真值 |
+| `chatsvc` | Harness 的进程 owner 和协议 host；启动、监控、排水并回收专属 Harness；转发输入、控制、lease 更新和结构化事件 |
 | Harness | chatsvc 内全部 session 的唯一 coordinator/agent 内核；维护每个 session 的模型、上下文、计划、工具、memory、审批和恢复状态 |
-| session workspace | 跨进程和节点保存恢复事实与 artifact，不承担进程所有权或分布式锁职责 |
+| session workspace | 跨进程和节点保存可校验的 Hermes checkpoint 与 artifact 内容，不承担业务语义权威、进程所有权或分布式锁职责 |
 
 “Harness 是 chatsvc 子进程”描述的是生命周期归属。“Harness 是唯一决策内核”描述的是
 执行权归属。这两点不冲突：chatsvc 管进程和协议，Harness 管 agent 决策。
@@ -72,6 +74,10 @@ chatsvc <- Harness stdout  版本化协议事件
 进程级用户亲和不能替代 session 隔离。任何模块级可变状态、当前工作目录、环境变量或
 全局 registry 都不得隐式充当 session 身份。
 
+同一 session 同时最多有一个 active coordinator run；普通新输入按 session 排队，steer、
+cancel、澄清回答和审批结果走高优先级控制路径。不同 session 可在进程资源上限内并发，
+调度必须有界且公平，不能让一个长任务长期阻塞同用户的其他 session。
+
 ## 5. 生命周期与故障语义
 
 ### 5.1 启动
@@ -94,9 +100,11 @@ Harness 崩溃只影响所属 chatsvc。chatsvc 将未完成 turn 标记为中�
 
 ### 5.4 chatsvc 崩溃或迁移
 
-旧 chatsvc 消失时，其 Harness 必须退出。chatrtmgr 重新建立 chatsvc 所有权后，新 chatsvc
-启动新的专属 Harness，并使用新的 execution epoch 从共享工作区恢复。旧 Harness 即使短暂
-存活，也必须因 epoch 失效而无法写状态或执行外部副作用。
+旧 chatsvc 消失时，其 Harness 必须退出。Lobby/session durable 边界通过 CAS 将相关 session
+绑定到新 owner 并增加各自的 execution epoch；chatrtmgr 建立新的 chatsvc 后，新 chatsvc
+启动新的专属 Harness，从 Lobby durable 事实和共享工作区 checkpoint/artifact 恢复。旧
+Harness 即使短暂存活，也必须因 lease 到期或 epoch 失效而无法提交状态或执行新的外部
+副作用。用户亲和定位器只是选节点的软提示，不能代替上述 fencing。
 
 ## 6. 不采用节点级共享 Harness 的原因
 
@@ -118,4 +126,5 @@ chatsvc 预热的独占 worker、懒加载 browser/MCP 等方式获得。跨 cha
 4. chatsvc 正常退出和强制退出后均不存在孤儿 Harness。
 5. chatsvc/Harness 重建后可从工作区恢复，未知副作用不自动重放。
 6. execution epoch 失效后，旧 Harness 的写入和外部操作被拒绝。
-
+7. 同一用户在一个 chatsvc/Harness 中创建多个 session 时，每个 session 拥有独立 workspace、
+   owner/epoch、run 队列、预算和事件流；正常热复用不增加 epoch。

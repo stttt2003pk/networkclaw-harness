@@ -12,7 +12,9 @@
 
 - ⬜ 在 NetworkClaw 仓库先更新正式协议定义，再生成代码和适配既有链路。
 - ⬜ chatsvc 实现 Harness spawn、握手、JSONL/后续传输、事件映射、健康、排水和回收。
-- ⬜ chatrtmgr 仍只管理 chatsvc 和 execution lease，不直接共享或调度 Harness。
+- ⬜ NetworkClaw 先建立 ADR/HLD；所有 gRPC 变更先改 `.proto`，以可选字段按 expand-contract 滚动发布。
+- ⬜ Lobby durable session 边界实现 owner/epoch/lease CAS；字段沿 gRPC、UDS、chatsvc 传入 Harness。
+- ⬜ chatrtmgr 仍管理 chatsvc、本地进程存活和 lease 传递，不直接共享或调度 Harness；跨节点 lease 权威留在 Lobby/session durable 边界。
 
 ## 15.2 旧 Coordinator 替换
 
@@ -23,6 +25,7 @@
 ## 15.3 全链路协议映射
 
 - ⬜ chatsvc 将输入、steer、cancel、clarification 和 approval 正确转发。
+- ⬜ 保持现有 request/session/trace/sequence/end/error 语义；Harness 扩展字段允许旧中继忽略。
 - ⬜ Harness 事件映射到 chatrtmgr/lobby/客户端，保持 accepted/completed 和终态语义。
 - ⬜ 旧客户端对未知非关键事件明确降级，未知控制事件 fail closed。
 
@@ -45,4 +48,3 @@
 - ⬜ 完成 H0-H6 自动化矩阵和一条端到端演示。
 - ⬜ 客户环境仅凭源码包和离线制品部署成功。
 - ⬜ 旧 coordinator 完成退役、运维 runbook 和发布说明完成后，将模块状态更新为 ✅。
-

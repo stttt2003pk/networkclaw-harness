@@ -39,7 +39,11 @@ lobby -> chatrtmgr -> chatsvc[host adapter] -> Harness[coordinator + agent loop]
 
 ## 1. 决策与目标
 
-NetworkClaw 保留现有 `lobby -> chatrtmgr -> chatsvc` 分布式会话链路。建设两个职责不同的仓库：完整 Hermes fork 用于跟踪和验证 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 上游；独立的 `networkclaw-harness` 作为正式开发与客户源码交付仓库。交付仓库通过可重复的同步流程纳入固定 Hermes 提交中必要的运行源码，保留约 95% 的运行能力，排除 UI、网站、演示资源和其他非运行内容。
+NetworkClaw 保留现有 `lobby -> chatrtmgr -> chatsvc` 分布式会话链路。当前
+`networkclaw-harness/main` 本身就是从完整 Hermes 历史演进而来的受控 fork，同时也是正式
+开发与客户源码交付仓库；不再要求额外维护一个 `networkclaw-hermes-fork`。仓库通过可重复
+的同步流程，从 Git 历史中固定的 Hermes 提交导出必要运行源码，保留约 95% 的运行能力，
+排除 UI、网站、演示资源和其他非运行内容。
 
 Harness 是由 `chatsvc` 托管进程和协议生命周期的无界面会话内核：它接收会话和用户操作，维护模型、上下文、工具、skills、memory、计划和工作区，并将经过筛选的过程事件返回给 `chatsvc`。`chatsvc` 再沿既有链路发送给客户端。这里的“托管”不包含 coordinator 决策权；决策循环完整归 Harness。
 
@@ -51,9 +55,18 @@ Harness 是由 `chatsvc` 托管进程和协议生命周期的无界面会话内�
 4. 让客户端看到必要的回复、进度、工具、产物、澄清、审批、完成或失败过程，但不暴露内部提示、密钥、原始调试日志或不适合展示的大型数据。
 5. 将 Harness 与 `chatsvc` 的关系固化为版本化协议，使 Harness 可以独立开发、测试、打包和发布。
 
+首期能力范围以 [Hermes Runtime 能力范围矩阵](./hermes-capability-matrix.md) 为合同。“保留”
+或“适配”必须由 H0 的真实能力探针证明；“禁用”不得仅从提示中隐藏，而要从生产和开发
+profile 的运行入口、registry 修改能力和安装路径上共同关闭。
+
 “95%”指用户和宿主可用的运行能力覆盖，不指代码行数。终端渲染、桌面面板、主题、快捷键和 TUI 专用状态不是目标；支撑这些 UI 的 session、事件、审批、恢复和工具语义应继续保留。
 
-Hermes 自带的自进化能力暂不纳入这 95% 目标。这里的自进化是指运行中的 agent 根据任务经验自动创建、修改、安装或发布 skill、tool、提示模板及其他可执行能力。该行为在多节点、共享文件系统、版本化交付和客户审计环境中会引入能力来源、并发修改、节点一致性、回滚和供应链等复杂问题，因此当前明确关闭。
+Hermes 自带的自进化能力暂不纳入这 95% 目标。这里的自进化是指运行中的 agent 根据任务经验自动创建、修改、安装或发布 skill、tool、提示模板及其他可执行能力。该行为在多节点、共享文件系统、版本化交付和客户审计环境中会引入能力来源、并发修改、节点一致性、回滚和供应链等复杂问题，因此 customer 和 development profile 均明确关闭运行时自安装、自修改和自发布入口。
+
+该限制不禁止开发者扩展内核。开发者可以在 `src/networkclaw_harness/tools` 和
+`src/networkclaw_harness/skills` 中新增或修改业务能力，并通过普通 Git 评审、行为测试、
+依赖锁定、离线制品、SBOM 和版本发布进入新的 Harness 制品。开发环境允许修改源码后
+重启或重建，不允许运行中的 agent 或 host 绕过发布链热装任意代码。
 
 ## 2. 范围与非目标
 
@@ -61,7 +74,7 @@ Hermes 自带的自进化能力暂不纳入这 95% 目标。这里的自进化�
 
 | 本阶段包含 | 本阶段不包含 |
 | --- | --- |
-| Hermes 上游 fork、可追溯 runtime snapshot、Headless 入口、工作区、事件投影、内置 tools/skills、离线制品 | 直接修改现有 `chatsvc` coordinator |
+| Hermes 上游历史、可追溯 runtime snapshot、Headless 入口、工作区、事件投影、内置 tools/skills、离线制品 | 直接修改现有 `chatsvc` coordinator |
 | Harness 与宿主的协议边界和版本策略 | 冻结或生成新的 protobuf |
 | 会话恢复、工具副作用恢复原则、工作区安全边界 | chatrtmgr 的共享文件系统挂载实现细节 |
 | Python 3.12 兼容、源码交付、wheelhouse、镜像和客户交付约束 | 客户运行时在线安装依赖或动态替换正在运行的内核 |
@@ -71,30 +84,53 @@ Hermes 自带的自进化能力暂不纳入这 95% 目标。这里的自进化�
 
 ## 3. 仓库与上游策略
 
-完整 Hermes fork 与客户交付仓库分离，通过一条自动化生成链连接：
+当前仓库同时承担 Hermes fork lineage 和客户交付源码职责，但完整 Hermes 源码不在工作树中
+保留第二份副本。自动化生成链如下：
 
 ```text
 NousResearch/hermes-agent                    官方上游
               |
               v
-<organization>/networkclaw-hermes-fork       完整上游集成仓库
+<organization>/networkclaw-harness           受控 fork，保留完整 Git ancestry
               |
-              | 固定 commit + 文件清单 + patch series + 自动校验
+              | 固定祖先 commit
               v
-<organization>/networkclaw-harness           精简但完整的客户交付源码仓库
+临时只读 worktree/archive + staging          仅用于同步过程，不进入交付
+              |
+              | allowlist + patch series + 自动校验
+              v
+vendor/hermes                                 生成并校验后的 Hermes runtime 快照
+              |
+              | 与 src、upstream、tests、scripts、锁文件共同组装
+              v
+networkclaw-harness source release            精简但完整的客户交付源码仓库
               |
               v
 源码包 + Python 3.12 wheelhouse + OCI image  客户交付制品
 ```
 
-`networkclaw-hermes-fork` 保留完整 Hermes 代码、测试和 Git 历史，承担上游研究、版本比较、兼容验证和补丁开发。它不是客户默认下载和继续开发的仓库。
+这里的目录职责必须保持明确：
 
-`networkclaw-harness` 是我们开发团队和客户交付环境共同使用的正式源码仓库。它包含 NetworkClaw 所有宿主适配代码、内置 tools、skills、工作区实现，以及经过清单选择的 Hermes 必要运行源码。客户构建不需要访问另一个 Git 仓库、Git submodule 或公网。
+- `src/networkclaw_harness/` 是 NetworkClaw 自有且持续开发的 Harness 工程源码，包括 host、
+  protocol、workspace、policy、事件投影、业务 tools/skills 和 Hermes 适配层。
+- `vendor/hermes/` 是同步流程的**输出结果**，不是临时抽取媒介，也不是放置 wheel、SBOM 或
+  镜像的通用制品目录。它只保存进入 Harness 运行时的 Hermes 源码和资源快照，禁止手工修改。
+- `upstream/` 保存生成 vendor snapshot 所需的不可变来源 commit、allowlist、patch series 和
+  文件 hash manifest，是来源配方与审计证据，不承载 Harness 业务实现。
+- 临时 worktree/archive 和 staging 才是抽取媒介；同步完成后销毁，不进入 Git 或客户交付包。
+- 可构建的源码交付对象是**整个仓库的发布快照**，不是单独的 `src/networkclaw_harness/`
+  目录，也不是单独的 `vendor/hermes/` 目录。
+
+`networkclaw-harness` 保留 Hermes 来源提交的 ancestry，承担上游研究、版本比较、兼容验证、
+Harness 开发和客户源码交付。当前 `main` 已被接受为这一 fork 的开发基线，不需要为了 H0
+再次选择或创建 fork。同步时仍必须使用不可变 commit，而不是可移动的 `main` 名称，这是
+为了让 allowlist、patch、文件 hash、SBOM 和客户制品能够复现，不是对当前 main 质量的重新
+评估。客户构建不需要访问另一个 Git 仓库、Git submodule 或公网。
 
 Hermes 运行源码不能靠人工复制维护。交付仓库必须提供同步工具，按以下顺序生成或更新 vendor snapshot：
 
 ```text
-读取 networkclaw-hermes-fork 的指定 commit
+从当前仓库的 Git history 建立指定 Hermes commit 的临时只读 worktree/archive
 → 按 allowlist 导出必要源码和资源
 → 应用 NetworkClaw patch series
 → 记录来源 commit 与每个文件 hash
@@ -103,11 +139,11 @@ Hermes 运行源码不能靠人工复制维护。交付仓库必须提供同步�
 → 更新许可证、第三方 notices 与 SBOM
 ```
 
-同步完成后的 vendor snapshot 提交进 `networkclaw-harness` Git，因此交付源码自身完整、可审查、可离线构建。同步工具负责来源追溯；不能在仓库中同时保留一份完整 Hermes 源码和一份手工复制的精简源码。
+同步完成后的 vendor snapshot 提交进 `networkclaw-harness` Git，因此交付源码自身完整、可审查、可离线构建。同步工具负责来源追溯；不能在当前工作树中同时保留一份完整 Hermes 源码和一份手工复制的精简源码。
 
 MIT 许可允许该模式，但交付制品必须保留 Hermes 及全部第三方依赖的版权、许可证和 notices。SBOM 需要列出真实依赖，不能通过把源码合并进自有 wheel 隐藏第三方组件。
 
-完整上游 fork 的本地布局保持 Hermes 原貌。正式交付仓库建议采用以下布局：
+正式交付仓库采用以下布局：
 
 ```text
 networkclaw-harness/
@@ -128,7 +164,7 @@ networkclaw-harness/
 │   ├── hermes-runtime-files.txt   # 允许进入交付仓库的文件/资源清单
 │   └── patches/                   # 对 vendor runtime 的可追溯补丁
 ├── scripts/
-│   ├── sync-hermes-runtime.py     # 从完整 fork 生成 vendor snapshot
+│   ├── sync-hermes-runtime.py     # 从固定 Hermes 祖先提交生成 vendor snapshot
 │   ├── verify-hermes-vendor.py    # 校验来源、hash、动态资源与未声明修改
 │   └── build-offline-release.py   # 构建源码包、wheelhouse 与发布清单
 ├── tests/
@@ -139,9 +175,12 @@ networkclaw-harness/
 └── Makefile
 ```
 
-`vendor/hermes` 不是 Git submodule，也不是运行时下载依赖。它是交付仓库某个 Git 提交内的普通源码，由同步脚本生成并由 hash 校验。日常 skill/tool 和 NetworkClaw adapter 开发直接发生在 `src/networkclaw_harness`；需要修改 Hermes 核心时，先在完整 fork 或 patch series 中形成可追溯变更，再同步到 vendor snapshot，避免产生无法回溯来源的私有分叉。
+`vendor/hermes` 不是 Git submodule，也不是运行时下载依赖。它是交付仓库某个 Git 提交内的普通源码，由同步脚本生成并由 hash 校验。日常 skill/tool 和 NetworkClaw adapter 开发直接发生在 `src/networkclaw_harness`；需要修改 Hermes 核心时，通过可追溯 patch series 或明确的上游同步提交形成变更，再同步到 vendor snapshot，避免产生无法回溯来源的手工副本。
 
-不能在初期凭目录名称猜测必要文件。H0 阶段先验证完整 Hermes fork，再通过真实 import、动态加载、资源读取和能力测试逐步形成 `hermes-runtime-files.txt`。被排除的主要对象应是 TUI/桌面 UI、网站、文档站、演示素材和与 Headless 运行无关的开发资源，而不是未经验证地删除某个运行模块。
+不能在初期凭目录名称猜测必要文件。H0 阶段在固定 Hermes 祖先提交的临时 worktree 上运行
+真实 import、动态加载、资源读取和能力测试，逐步形成 `hermes-runtime-files.txt`。被排除的
+主要对象应是 TUI/桌面 UI、网站、文档站、演示素材和与 Headless 运行无关的开发资源，
+而不是未经验证地删除某个运行模块。
 
 ## 4. 目标架构
 
@@ -172,17 +211,27 @@ Harness 是会话内部的唯一决策者。它决定下一次模型调用、上
 2. 分配并传入会话身份、租户身份、模型配置引用、资源限制和工作目录。
 3. 接收 Harness 结构化事件，将适合用户展示的部分映射到既有客户端协议。
 4. 管理 Harness 子进程的启动、停止、监控和异常报告。
-5. 与 chatrtmgr 协作保证同一会话的执行权唯一。
+5. 与 Lobby durable lease 和 chatrtmgr 本地存活真值协作，保证同一会话的执行权唯一。
 
-`chatrtmgr` 继续管理 chatsvc 的用户亲和、节点容量、排水、重启和 execution lease，但不直接
-复用或向多个 chatsvc 分配同一个 Harness。Harness 的生命周期随所属 chatsvc 建立、排水、
-重启和终止；chatsvc 异常退出时必须确保其 Harness 不成为孤儿进程。
+`chatrtmgr` 继续管理 chatsvc 的用户亲和、节点容量、排水、重启和本节点进程存活真值，
+但不直接复用或向多个 chatsvc 分配同一个 Harness。用户亲和是路由和热复用优化，不是
+session 唯一执行权的正确性来源。Session 的 durable owner、递增 execution epoch 和有界
+lease 由 Lobby/session durable 边界以 CAS 方式维护，沿既有链路传到 chatrtmgr、chatsvc 和
+Harness；chatrtmgr 负责本地进程执行，chatsvc 负责 host 传递与续租，Harness 负责在状态
+写入和副作用前 fail closed。Harness 的生命周期随所属 chatsvc 建立、排水、重启和终止；
+chatsvc 异常退出时必须确保其 Harness 不成为孤儿进程。
 
 Harness 不直接调用 lobby、chatrtmgr 的内部存储或业务代码。涉及 NetworkClaw 内部业务能力时，通过受控工具或正式 API/RPC 访问。
 
 ## 5. Headless Host 协议
 
 Harness 与其唯一所属的 `chatsvc` 之间，初始传输可采用标准输入输出上的 JSONL：一行一个 JSON 对象，标准输出只写协议帧，日志只写标准错误。该传输依赖 1:1 子进程关系，不承担多个 chatsvc 的连接注册或事件路由。后续可将同一语义映射为 UDS、protobuf/gRPC，而不改变 Harness 的内部接口和 1:1 所有权。
+
+Host 协议以当前客户稳定链路的字段和流式语义为兼容基线，不要求 lobby、chatrtmgr、chatsvc
+立即理解 Harness 的全部内部对象。外层传输帧保留 `request_id`、`user_id`、`session_id`、
+`tenant_id`、请求或帧类型、payload、`trace_id`、deadline、扩展 metadata、流式 `sequence`、
+结束帧和显式错误；Harness 的 `run_id`、`interaction_id`、`invocation_id`、`event_id` 和
+`artifact_id` 作为类型化 payload 或扩展字段逐步加入。
 
 协议至少需要覆盖以下语义：
 
@@ -191,13 +240,23 @@ Harness 与其唯一所属的 `chatsvc` 之间，初始传输可采用标准输�
 | chatsvc -> Harness | 会话 | `session.open`、`session.resume`、`session.close` |
 | chatsvc -> Harness | 用户控制 | `user.input`、`turn.steer`、`turn.cancel` |
 | chatsvc -> Harness | 人机交互回执 | `clarification.answer`、`approval.resolve` |
-| chatsvc -> Harness | 宿主控制 | `health.query`、`capabilities.query`、`shutdown` |
+| chatsvc -> Harness | 宿主控制 | `health.query`、`capabilities.query`、`shutdown`、`session.lease.update` |
 | Harness -> chatsvc | 生命周期 | `session.opened`、`turn.started`、`turn.completed`、`turn.failed` |
 | Harness -> chatsvc | 用户可见过程 | `assistant.delta`、`plan.updated`、`tool.started`、`tool.completed` |
 | Harness -> chatsvc | 需要用户操作 | `clarification.requested`、`approval.requested` |
 | Harness -> chatsvc | 产物与诊断 | `artifact.created`、`warning`、`error`、`heartbeat` |
 
-每个帧必须带 `protocol_version`、`session_id`、关联的 `turn_id` 或 `request_id`、单调递增的 `sequence`，以及明确的发生时间。`accepted` 与 `completed` 必须分离：输入被 Harness 接收不代表模型或工具已执行完成。
+每个帧必须带 `protocol_version`、类型、`request_id` 和明确的发生时间。Session 类命令和事件
+必须带 `user_id`、`session_id`；`session.open`/`resume` 还必须绑定 `tenant_id`、workspace、
+owner、execution epoch 和 lease。`health`、`capabilities`、`shutdown` 等进程级命令不伪造
+`session_id`。流式响应的 `sequence` 以 `request_id` 为作用域从 1 单调递增，最终必须以明确
+的 end 或 error 收口；跨 run 的 durable 历史顺序使用存储分配的 cursor，不复用传输分片
+sequence。`accepted` 与 `completed` 必须分离：输入被 Harness 接收不代表模型或工具已执行完成。
+
+同一 Harness 的调度合同为：不同 session 可以在全局资源上限内并发；同一 session 同时最多
+一个 active coordinator run。普通新输入在该 session 内排队，`turn.steer`、`turn.cancel`、
+澄清回答和审批结果走高优先级控制路径。调度器在 session 间实施有界并发和公平性，达到
+容量时返回明确的 queued 或 resource-exhausted 结果，不无限接收。
 
 协议版本由 Harness 发布，chatsvc 选择兼容版本。具体字段和 protobuf 仅在 Harness 基线通过后冻结并生成；这样不会反向污染当前运行中的 coordinator 协议。
 
@@ -218,17 +277,42 @@ Harness 与其唯一所属的 `chatsvc` 之间，初始传输可采用标准输�
 └── tmp/                           # 可回收的本轮临时文件
 ```
 
-目录内的精确状态格式是 Harness 的内部实现细节，可复用 Hermes 的 session persistence；但必须满足以下不变量：
+Workspace 是 Hermes 运行快照和大型 artifact 的持久载体，但不是 NetworkClaw Session 业务
+语义的第二权威账本。Lobby durable store 继续保存 session 身份、用户可见历史、goal/plan、
+interaction、approval、tool intent/result、unknown、交付和 artifact 元数据；Redis 仅是可丢、
+有 TTL 的缓存。Workspace 中的 Hermes checkpoint 必须记录所依据的 durable cursor 和
+execution epoch；恢复时仅在二者匹配时快速加载，否则从 durable 事实重建、明确降级或阻塞。
+
+目录内的精确 checkpoint 格式是 Harness 的内部实现细节，可复用 Hermes 的 session
+persistence；但必须满足以下不变量：
 
 1. 原始大型数据和中间结果留在工作区，模型只接收摘要、索引、路径和必要片段。
-2. 工具开始、外部副作用意图、工具结果、当前计划和恢复检查点之间有可判定的顺序。
+2. 工具开始、外部副作用意图、工具结果、当前计划、durable cursor 和恢复检查点之间有可判定的顺序。
 3. 新进程恢复时，能区分“已完成”“已取消”“等待用户”“可安全重试”和“结果未知”。
 4. 有副作用的工具在结果未知时默认不自动重放；只读、显式声明可重试的工具才可重放。
 5. `tmp/` 不承载恢复所需的唯一事实；恢复需要的内容必须写入状态或 artifact 区。
 6. Harness 仅可读写被分配会话根目录及策略允许的路径，禁止通过相对路径或符号链接逃逸。
 7. 同一 Harness 内多个 session 的上下文、缓存、工具状态、审批、取消、预算和事件序列必须按 `session_id` 隔离；进程级用户亲和不能代替 session 隔离。
 
-共享文件系统解决“换节点后文件仍可访问”，不解决“双写者”问题。同一会话同一时刻只能有一个 Harness 执行者。chatrtmgr 是执行权租约的权威来源；Harness 持有由 host 传入的 execution epoch，并在写入或外部操作前校验其仍有效。共享 FS、会话 hash、租约存储和故障接管的精确方案另行设计。
+共享文件系统解决“换节点后文件仍可访问”，不解决“双写者”问题。同一会话同一时刻只能有
+一个 Harness 执行者。Lobby/session durable 边界是 session owner、execution epoch 和 lease
+的跨节点权威；chatrtmgr 是本节点 chatsvc 进程存活真值，二者不得混同。每个 session 的
+epoch 单调递增，正常复用同一 owner 不增加，迁移、refork 或新 owner 接管时通过 CAS 增加。
+Harness 持有由 host 传入的 owner、epoch 和有界 lease；续租中断或 host 管道失联后，在
+宽限期结束前停止新模型步骤、状态写入和外部副作用。Durable 提交携带 epoch，由权威边界
+拒绝旧 epoch。对不支持 epoch 的外部系统，仍使用 intent、审批、幂等键和状态查询处理
+unknown，不能声称 exactly-once。
+
+权威分工固定如下：
+
+| 数据或裁决 | 权威位置 |
+| --- | --- |
+| session 身份、消息和 coordinator 语义事实 | Lobby durable store |
+| session owner、execution epoch、lease | Lobby/session durable 边界 |
+| chatsvc 是否存活、是否可复用 | chatrtmgr 本地进程状态 |
+| Hermes checkpoint、compaction snapshot | workspace，可校验和重建的运行快照 |
+| 大文件和 artifact 内容 | workspace；Lobby 保存 hash、owner、类型和引用元数据 |
+| 热历史和临时查询加速 | Redis/内存，可丢且不得成为恢复权威 |
 
 ## 7. 内核模块
 
@@ -261,7 +345,7 @@ Harness 与其唯一所属的 `chatsvc` 之间，初始传输可采用标准输�
 | Recovery reconciler | 进程中断后重建运行状态、处理未知工具结果 | Hermes persistence + NetworkClaw 工作区语义 |
 | Observability and audit | 结构化日志、trace、事件审计、指标、诊断快照 | 双方整合 |
 | Packaging and supply chain | CPython 3.12、wheelhouse、hash、SBOM、镜像、离线安装 | NetworkClaw 新增 |
-| Upstream maintenance | 完整 Hermes fork 基线、runtime allowlist、补丁、vendor 同步、升级与兼容性测试 | NetworkClaw 新增工程流程 |
+| Upstream maintenance | Hermes fork ancestry、固定来源提交、runtime allowlist、补丁、vendor 同步、升级与兼容性测试 | NetworkClaw 新增工程流程 |
 
 ## 8. 事件可见性
 
@@ -290,6 +374,27 @@ Harness 的交付不是只有一个容器或一个 Python wheel。用户需要�
 | 源码仓库 | NetworkClaw Harness 代码、必要且可追溯的 Hermes runtime snapshot、内置 tools/skills、测试、同步与构建脚本、锁文件和许可证 | 下载、审查、继续开发和重新构建 |
 | 离线构建包 | CPython 3.12、全部 cp312 wheels、hash、SBOM、第三方 notices 和基础镜像引用 | 在无公网或 Nexus 依赖不完整的 CI 中重建 |
 | 运行制品 | 从上述源码和依赖构建的 OCI 镜像，或可执行安装目录 | Kubernetes 和 Ubuntu 22.04 环境直接运行 |
+
+三类制品共享同一个发布身份，但不能混放进 `vendor/hermes/`。仓库路径、构建机本地输出和
+正式发布位置遵循下表：
+
+| 内容 | 仓库中的权威输入或本地输出 | 正式发布位置 |
+| --- | --- | --- |
+| NetworkClaw 自有源码 | `src/networkclaw_harness/` | 完整源码发布包中的同名目录 |
+| Hermes runtime 源码 | `vendor/hermes/` | 完整源码发布包和运行镜像中的同名目录 |
+| 来源、allowlist、patch 和 vendor manifest | `upstream/` | 完整源码发布包；manifest 同时进入发布清单 |
+| Python 依赖合同 | `requirements.lock`、`poetry.lock` | 源码发布包和离线构建包 |
+| CPython 3.12 离线 wheels | `offline/wheels/`，生成文件不提交 Git | 离线构建包的 wheelhouse |
+| SBOM、许可证、notices 和发布 manifest | `offline/`、`LICENSES/`、`THIRD_PARTY_NOTICES.md` | 源码包、离线包和镜像对应的供应链附件 |
+| Python wheel 和 sdist | `dist/`，生成文件不提交 Git | 制品库或 release artifact store |
+| 完整版本发布目录 | `dist/release/<version>/`，由发布脚本组装且不提交 Git | release artifact store；源码包和离线包从这里发布 |
+| OCI 镜像 | 由根目录 `Dockerfile` 从同一提交构建 | OCI registry，以不可变 digest 为准；离线场景可另附 OCI archive |
+| 部署定义 | `deploy/` | 源码发布包；成熟后可独立发布部署 bundle |
+
+`dist/release/<version>/` 只是构建机上的发布组装区，不是新的源码权威位置。任何可发布文件
+都必须能从一个干净 Git 提交及其受控离线输入重复生成；发布完成后，以 artifact store 中的
+源码包、离线构建包和 OCI registry 中的镜像作为客户下载位置，并由同一 release manifest
+绑定 source commit、vendor commit、lock hash、SBOM hash、制品 hash 和 image digest。
 
 源码仓库应包含可以直接开发的目录，而不是只提供构建后的 `site-packages`：
 
@@ -363,12 +468,12 @@ pip install --no-index --find-links <wheelhouse> --require-hashes -r requirement
 
 | 阶段 | 交付与验收出口 |
 | --- | --- |
-| H0：上游与裁剪基线 | 完整 fork 固定 Hermes 提交并通过 Python 3.12 基线；形成 runtime allowlist、来源清单和初始 vendor snapshot；许可证与依赖可复现 |
+| H0：上游与裁剪基线 | 从当前 fork history 固定 Hermes 提交并通过 Python 3.12 基线；形成 runtime allowlist、来源清单和初始 vendor snapshot；许可证与依赖可复现 |
 | H1：Headless 最小闭环 | Headless 入口可接收一条输入，流式返回文本、工具开始/结束和终态事件 |
 | H2：工作区与资料闭环 | 一个会话将大量资料写入工作区，按索引局部查询，不将全集塞入模型上下文 |
 | H3：交互与控制闭环 | 用户中途 steer、澄清、审批和取消可正确进入 Hermes loop 并回传事件 |
-| H4：恢复闭环 | Harness 或 chatsvc 中断后，新的 1:1 进程对加载同一工作目录；只读工具可按策略恢复，有副作用工具不会盲目重放；旧 Harness 不成为孤儿且失效 epoch 无法继续写入 |
-| H5：源码与离线交付闭环 | 仅凭交付源码仓库即可离线构建和运行，不依赖完整 fork/submodule/公网；Python 3.12 wheelhouse、镜像、SBOM 与源码提交一致 |
+| H4：恢复闭环 | Harness 或 chatsvc 中断后，新的 1:1 进程对加载 Lobby durable 事实和同一工作目录；只读工具可按策略恢复，有副作用工具不会盲目重放；旧 Harness 不成为孤儿且失效 epoch 无法继续写入 |
+| H5：源码与离线交付闭环 | 仅凭交付源码仓库即可离线构建和运行，不依赖其他仓库、submodule 或公网；Python 3.12 wheelhouse、镜像、SBOM 与源码提交一致 |
 | H6：接线准备 | Host 协议 v1 稳定；模拟 chatsvc host 的兼容测试通过；此时才设计并改造 chatsvc/protobuf |
 
 每个阶段都需有自动化测试和一条端到端演示。H4、H5、H6 未达到验收前，Harness 不进入客户版本，也不替换现有 coordinator。
@@ -383,12 +488,15 @@ pip install --no-index --find-links <wheelhouse> --require-hashes -r requirement
 | 多个 chatsvc 共享 Harness 导致多租户串线和节点级故障域 | 固定 `chatsvc : Harness = 1 : 1`；一个 Harness 仅复用所属 chatsvc 的多个 session，跨 chatsvc 共享需作为全新架构重新评审 |
 | chatsvc 被终止后遗留孤儿 Harness | 子进程退出契约结合 parent-death signal、进程组、cgroup/container 或等价机制；E2E 覆盖正常退出与强杀路径 |
 | 未知结果的外部副作用 | 持久化 intent 与 tool policy；默认 fail closed，不自动重放 |
-| Hermes 上游升级冲突 | 完整 fork 保留 upstream remote；升级分支先验证上游，再更新 allowlist、patch series 和 vendor snapshot |
+| Hermes 上游升级冲突 | 当前 fork 保留 upstream remote 和来源 ancestry；升级分支先验证上游，再更新固定提交、allowlist、patch series 和 vendor snapshot |
 | Hermes 裁剪遗漏动态依赖 | 结合 import/resource tracing、能力矩阵和异常恢复测试维护 allowlist；不得只依据静态 import 判断 |
 | vendor 源码被手工修改而失去来源 | `verify-hermes-vendor.py` 校验文件 hash 和 patch series；未声明修改阻断发布 |
 | 客户环境禁用依赖或系统工具 | 在发布前生成离线依赖闭环和允许工具清单；禁用项必须替换，不以打包规避 |
 | 源码、wheelhouse 与运行镜像漂移 | 以 Git commit 为发布根身份，构建清单记录源码提交、依赖 hash、镜像 digest 和协议版本 |
-| 自进化导致节点能力漂移 | 生产 profile 禁用运行时 skill/tool 创建、修改和安装；改进建议只作为 artifact 输出，能力变更必须进入 Git 发布流程 |
+| 自进化导致节点能力漂移 | customer/development profile 均禁用运行时 skill/tool 创建、修改和安装；开发者仍通过源码、测试和发布链交付新能力 |
 | 协议过早冻结 | 先使用 headless host 模拟器验证事件语义，H6 后才生成正式 protobuf |
 
-下一个设计输入应是“会话 hash、共享挂载根、execution epoch 与工作区所有权”的详细模型。该模型决定 chatrtmgr、chatsvc 与 Harness 如何在节点迁移和进程异常后安全接续同一会话。
+下一步实施输入是上述合同的字段级落地：会话 hash 和挂载根格式、Lobby lease 的 CAS 与续租
+接口、现有 gRPC/UDS 的向后兼容字段、chatsvc 到 Harness 的 `session.lease.update`，以及
+checkpoint cursor/epoch 校验。具体 `.proto` 和存储 migration 在 NetworkClaw 仓库遵循
+proto-first、expand-contract 和 ADR/HLD 流程实施。

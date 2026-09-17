@@ -31,6 +31,8 @@
 - ⬜ 发现发布制品内置 skills，完整读取并按 session 注入。
 - ⬜ skill/tool 源码只读，生产 profile 禁止运行时创建、修改、安装或发布。
 - ⬜ skill 版本和来源进入会话语义资产及发布清单。
+- ⬜ customer/development profile 均不暴露运行时安装、创建、修改或发布 tool/skill 的入口。
+- ⬜ 验证开发者可在 Harness 源码内新增业务 tool/skill，并经测试、lock/hash、SBOM 和新版本发布进入制品。
 
 ## 08.5 MCP 和 Browser
 
@@ -41,6 +43,7 @@
 ## 08.6 NetworkClaw tools
 
 - ⬜ 定义内部 API/RPC 工具边界，不直接 import lobby/chatrtmgr 业务代码。
+- ⬜ 业务工具拆分为 Harness 内 schema/adapter/policy 与 NetworkClaw 内正式业务 API，禁止直接读业务数据库。
 - ⬜ 工具凭据由 host 或 secret provider 提供，不进入模型上下文。
 - ⬜ 为业务工具提供权限、幂等、审计和真实后端 E2E。
 
@@ -48,4 +51,3 @@
 
 - ⬜ 工具能力矩阵、策略拒绝、审批要求、取消和大型结果路径通过测试。
 - ⬜ 生产 profile 确认自进化关闭且无运行时下载后，将状态更新为 ✅。
-
