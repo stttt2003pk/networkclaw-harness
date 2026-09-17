@@ -1,10 +1,36 @@
-# Coordinator 语义运行时：让 chatsvc 对局自主推进
+# Coordinator 语义运行时（前序设计：原 chatsvc 内置方案）
 
-> 状态：设计草案，待评审；本文不代表功能已实现。
+> 状态：前序设计，已演进为 [Hermes Headless Harness 内核设计](./hermes-headless-harness.md)。本文保留语义模型和演进背景，不再作为 coordinator 部署位置与执行权归属的当前设计依据。
 > 日期：2026-09-08。
 > 实施计划：[coordinator_kernal 总览与十模块任务](../../.codebuddy/plan/coordinator_kernal/00_overview.md)（计划草案，未实施）。
 > 需求来源：本轮产品设计讨论——保持用户亲和与三层架构，以丰富 coordinator LLM 语义为改造中心，支持可见、可交互、可交付的自主工作过程。
 > 归档：按本次要求放置于 `docs/architecture`。实施前关联对应 PRD、拆解开发计划，并将涉及执行控制、持久化权威边界的决策记录为 ADR；本次仅交付设计，不修改运行代码、API 或部署。
+
+## 当前架构解释：从 chatsvc 内置 coordinator 演进为独立 Harness 内核
+
+本文最初提出在 `chatsvc` 内扩展 coordinator 的语义和执行循环。后续设计保留本文定义的
+目标、计划、工具、agent、澄清、审批、证据、交付和恢复等语义，但改变了执行内核的
+归属：coordinator 不再作为 `chatsvc` 内部实现继续扩张，而是迁移到独立维护的
+`networkclaw-harness`，并由 Hermes Headless Harness 承担完整 agent loop。
+
+当前目标架构中的职责是：
+
+```text
+lobby -> chatrtmgr -> chatsvc A -> NetworkClaw Headless Harness A
+                  \-> chatsvc B -> NetworkClaw Headless Harness B
+                         host          coordinator / agent 内核
+```
+
+- Harness 是会话内部唯一的模型决策、计划推进、工具调度、上下文和恢复权威。
+- `chatsvc` 负责宿主协议、进程生命周期、会话输入输出转发以及与既有链路的适配；它不再
+  保留一套并行 coordinator loop，也不解析模型文本来推断执行状态。
+- 进程关系固定为 `chatsvc : Harness = 1 : 1`；一个专属 Harness 可以承载所属 chatsvc 的
+  多个 session，但不得被其他 chatsvc 共享。详细约束见
+  [Harness 进程形态：chatsvc 与 Harness 1:1](./process-topology.md)。
+- 本文中“Coordinator 的决策与对局执行留在 chatsvc”等表述是前序方案的历史记录，已被
+  Headless Harness 设计替代，不能用于指导当前工程实现。
+- Harness 验收前暂不改动现有 Go 服务，只是为了先独立验证新内核；这不表示最终架构会在
+  `chatsvc` 和 Harness 中长期保留两套 coordinator。
 
 ## 1. 宗旨与边界
 
@@ -14,7 +40,7 @@
 
 ### 1.1 已确认原则
 
-1. **保持 `lobby → chatrtmgr → chatsvc` 三层架构。** Coordinator 的决策与对局执行留在 chatsvc。
+1. **历史决策，已被后续设计替代。** 原方案保持 `lobby → chatrtmgr → chatsvc` 三层架构，并将 Coordinator 的决策与对局执行留在 chatsvc；当前方案保留既有服务链路，但把 coordinator/agent 内核从 chatsvc 分离到独立 Headless Harness。
 2. **保持用户亲和设计。** Lobby 的路由提示与 chatrtmgr 的进程存活裁决继续分离，优先复用用户的热进程；一个进程可以承载该用户多个 session，不能把“对局”类比误解为强制一 session 一进程。
 3. **当前先做好单用户对局。** 使用方式简单、高效；多人加入同一对局、多人审批仲裁和协作控制权后置。
 4. **语义丰满是主线。** 传输、持久化、前端按语义需要适配，不先建设通用分布式工作流平台。
@@ -45,9 +71,13 @@
 
 当前基础已经支持递归反馈的雏形。主要缺口是计划、交互、审批、验证、纠错和交付之间缺少完整且稳定的行为契约，以及过程资产的长期保存与加载。
 
-## 3. 职责与承载对象
+## 3. 前序方案的职责与承载对象（部署位置已失效）
 
-### 3.1 三层架构不变
+### 3.1 历史承载图：三层架构不变
+
+> 注意：下图记录最初把 coordinator 放在 chatsvc 实例内的方案，仅用于解释语义设计的
+> 来源。当前目标拓扑以 [Hermes Headless Harness 内核设计](./hermes-headless-harness.md)
+> 为准，coordinator/agent loop 位于独立 Harness 中。
 
 ```mermaid
 flowchart TB

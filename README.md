@@ -4,6 +4,11 @@ NetworkClaw Harness is the customer-deliverable, headless session kernel that wi
 traceable Hermes runtime snapshot behind a versioned JSONL protocol. It is intentionally
 separate from the full Hermes fork.
 
+This repository is the evolution of the earlier coordinator semantic-runtime design: the
+coordinator and agent loop move out of `chatsvc` into this Harness. In the target architecture,
+`chatsvc` is the host adapter and lifecycle/transport boundary; the Harness is the session's
+single decision-making kernel. The two components must not retain parallel coordinator loops.
+
 The repository-owned architecture source is
 [`src/networkclaw_harness/docs/hermes-headless-harness.md`](src/networkclaw_harness/docs/hermes-headless-harness.md).
 

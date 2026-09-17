@@ -4,13 +4,44 @@
 >
 > 日期：2026-09-17。
 >
-> 关联设计：[Coordinator 语义运行时](./coordinator-semantic-runtime.md)。本文将其“对局自主推进”目标落实为一个独立维护的 Headless Harness；在 Harness 自身通过验收前，不修改现有 `chatsvc`、lobby、chatrtmgr 或 protobuf。
+> 前序设计：[Coordinator 语义运行时](./coordinator-semantic-runtime.md)。本文不是与其并列的第二套 coordinator，而是该方案从“chatsvc 内置 coordinator”向“独立 Headless Harness 内核”的演进。在 Harness 自身通过验收前暂不修改现有 `chatsvc`、lobby、chatrtmgr 或 protobuf，这是分阶段迁移约束，不是最终职责划分。
+>
+> 进程形态决策：[Harness 进程形态：chatsvc 与 Harness 1:1](./process-topology.md)。一个 chatsvc 拥有一个专属 Harness 子进程，该 Harness 承载 chatsvc 的多个 session；禁止多个 chatsvc 共享同一个 Harness 进程。
+
+## 0. 演进关系与最终职责
+
+`Coordinator 语义运行时` 首先定义了对局自主推进所需的目标、计划、工具、agent、澄清、
+审批、证据、交付和恢复语义，并最初设想把决策循环继续放在 `chatsvc` 内。本文保留这些
+产品语义，但把 coordinator 的执行所有权迁移到新的 Harness 内核。
+
+演进方向是单向且明确的：
+
+```text
+前序方案
+lobby -> chatrtmgr -> chatsvc[coordinator + agent loop]
+
+目标方案
+lobby -> chatrtmgr -> chatsvc[host adapter] -> Harness[coordinator + agent loop]
+```
+
+目标状态下：
+
+1. Harness 是会话内部唯一的决策者，负责模型调用、上下文、计划、工具、skills、memory、
+   subagent、交互等待、恢复和终止判断。
+2. `chatsvc` 不再实现或维护另一套 coordinator/agent loop；它负责托管 Harness 进程、转发
+   输入与控制、接收结构化事件，并接回现有客户端链路。
+3. “由 chatsvc 托管 Harness”只表示进程、协议和生命周期托管，不表示决策逻辑仍归
+   `chatsvc` 所有。
+4. 当前先独立建设 Harness，再改造 chatsvc 接线，是为了降低迁移风险并建立验收基线；
+   接线完成后，旧 coordinator 路径应被替换，而不是与 Harness 长期双轨运行。
+5. 进程部署采用 `chatsvc : Harness = 1 : 1`，会话部署采用 `Harness : session = 1 : N`；
+   chatrtmgr 不托管一个供多个 chatsvc 共享的节点级 Harness。
 
 ## 1. 决策与目标
 
 NetworkClaw 保留现有 `lobby -> chatrtmgr -> chatsvc` 分布式会话链路。建设两个职责不同的仓库：完整 Hermes fork 用于跟踪和验证 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 上游；独立的 `networkclaw-harness` 作为正式开发与客户源码交付仓库。交付仓库通过可重复的同步流程纳入固定 Hermes 提交中必要的运行源码，保留约 95% 的运行能力，排除 UI、网站、演示资源和其他非运行内容。
 
-Harness 是由 `chatsvc` 托管的无界面会话内核：它接收会话和用户操作，维护模型、上下文、工具、skills、memory、计划和工作区，并将经过筛选的过程事件返回给 `chatsvc`。`chatsvc` 再沿既有链路发送给客户端。
+Harness 是由 `chatsvc` 托管进程和协议生命周期的无界面会话内核：它接收会话和用户操作，维护模型、上下文、工具、skills、memory、计划和工作区，并将经过筛选的过程事件返回给 `chatsvc`。`chatsvc` 再沿既有链路发送给客户端。这里的“托管”不包含 coordinator 决策权；决策循环完整归 Harness。
 
 本设计的目标如下：
 
@@ -36,7 +67,7 @@ Hermes 自带的自进化能力暂不纳入这 95% 目标。这里的自进化�
 | Python 3.12 兼容、源码交付、wheelhouse、镜像和客户交付约束 | 客户运行时在线安装依赖或动态替换正在运行的内核 |
 | 会话 memory、人工维护并随版本发布的 skills/tools | Harness 运行时自动创建、修改、安装或发布 skills/tools 的自进化能力 |
 
-未来接线阶段，现有 coordinator 可以被替换为 Harness host adapter；这是后续迁移，不是本设计的实施前提。
+未来接线阶段，现有 chatsvc coordinator 将被 Harness host adapter 替换。该替换是既定迁移目标，只是不作为 Harness 独立内核建设与验收的实施前提；不得据此在最终架构中保留两套并行 coordinator。
 
 ## 3. 仓库与上游策略
 
@@ -119,7 +150,7 @@ flowchart LR
     Client[客户端] <--> Lobby[lobby]
     Lobby <--> Manager[chatrtmgr]
     Manager <--> ChatSvc[chatsvc]
-    ChatSvc <-->|版本化双向协议| Harness[NetworkClaw Headless Harness]
+    ChatSvc <-->|1:1 专属子进程<br/>版本化双向协议| Harness[NetworkClaw Headless Harness]
 
     Harness <--> Model[LLM Provider]
     Harness <--> Runtime[Hermes Runtime]
@@ -131,6 +162,10 @@ flowchart LR
 
 Harness 是会话内部的唯一决策者。它决定下一次模型调用、上下文、工具、计划推进、重规划和恢复动作。`chatsvc` 不解析模型文本来猜测这些状态，也不再维护另一份 agent loop。
 
+进程形态固定为一个 chatsvc 对应一个专属 Harness。一个 chatsvc 本身可以承载多个 session，
+其 Harness 承载相同归属范围内的这些 session，并以 `session_id` 严格隔离运行状态。Harness
+不是一 session 一进程，也不是供 chatrtmgr 下多个 chatsvc 共同连接的节点级单例。
+
 `chatsvc` 是 Harness 的 NetworkClaw host，负责：
 
 1. 将用户会话、输入、补充、取消和审批结果转给 Harness。
@@ -139,11 +174,15 @@ Harness 是会话内部的唯一决策者。它决定下一次模型调用、上
 4. 管理 Harness 子进程的启动、停止、监控和异常报告。
 5. 与 chatrtmgr 协作保证同一会话的执行权唯一。
 
+`chatrtmgr` 继续管理 chatsvc 的用户亲和、节点容量、排水、重启和 execution lease，但不直接
+复用或向多个 chatsvc 分配同一个 Harness。Harness 的生命周期随所属 chatsvc 建立、排水、
+重启和终止；chatsvc 异常退出时必须确保其 Harness 不成为孤儿进程。
+
 Harness 不直接调用 lobby、chatrtmgr 的内部存储或业务代码。涉及 NetworkClaw 内部业务能力时，通过受控工具或正式 API/RPC 访问。
 
 ## 5. Headless Host 协议
 
-Harness 与 `chatsvc` 的初始传输可采用标准输入输出上的 JSONL：一行一个 JSON 对象，标准输出只写协议帧，日志只写标准错误。后续可将同一语义映射为 protobuf/gRPC，而不改变 Harness 的内部接口。
+Harness 与其唯一所属的 `chatsvc` 之间，初始传输可采用标准输入输出上的 JSONL：一行一个 JSON 对象，标准输出只写协议帧，日志只写标准错误。该传输依赖 1:1 子进程关系，不承担多个 chatsvc 的连接注册或事件路由。后续可将同一语义映射为 UDS、protobuf/gRPC，而不改变 Harness 的内部接口和 1:1 所有权。
 
 协议至少需要覆盖以下语义：
 
@@ -187,6 +226,7 @@ Harness 与 `chatsvc` 的初始传输可采用标准输入输出上的 JSONL：�
 4. 有副作用的工具在结果未知时默认不自动重放；只读、显式声明可重试的工具才可重放。
 5. `tmp/` 不承载恢复所需的唯一事实；恢复需要的内容必须写入状态或 artifact 区。
 6. Harness 仅可读写被分配会话根目录及策略允许的路径，禁止通过相对路径或符号链接逃逸。
+7. 同一 Harness 内多个 session 的上下文、缓存、工具状态、审批、取消、预算和事件序列必须按 `session_id` 隔离；进程级用户亲和不能代替 session 隔离。
 
 共享文件系统解决“换节点后文件仍可访问”，不解决“双写者”问题。同一会话同一时刻只能有一个 Harness 执行者。chatrtmgr 是执行权租约的权威来源；Harness 持有由 host 传入的 execution epoch，并在写入或外部操作前校验其仍有效。共享 FS、会话 hash、租约存储和故障接管的精确方案另行设计。
 
@@ -327,7 +367,7 @@ pip install --no-index --find-links <wheelhouse> --require-hashes -r requirement
 | H1：Headless 最小闭环 | Headless 入口可接收一条输入，流式返回文本、工具开始/结束和终态事件 |
 | H2：工作区与资料闭环 | 一个会话将大量资料写入工作区，按索引局部查询，不将全集塞入模型上下文 |
 | H3：交互与控制闭环 | 用户中途 steer、澄清、审批和取消可正确进入 Hermes loop 并回传事件 |
-| H4：恢复闭环 | 中断后新进程加载同一工作目录；只读工具可按策略恢复，有副作用工具不会盲目重放 |
+| H4：恢复闭环 | Harness 或 chatsvc 中断后，新的 1:1 进程对加载同一工作目录；只读工具可按策略恢复，有副作用工具不会盲目重放；旧 Harness 不成为孤儿且失效 epoch 无法继续写入 |
 | H5：源码与离线交付闭环 | 仅凭交付源码仓库即可离线构建和运行，不依赖完整 fork/submodule/公网；Python 3.12 wheelhouse、镜像、SBOM 与源码提交一致 |
 | H6：接线准备 | Host 协议 v1 稳定；模拟 chatsvc host 的兼容测试通过；此时才设计并改造 chatsvc/protobuf |
 
@@ -340,6 +380,8 @@ pip install --no-index --find-links <wheelhouse> --require-hashes -r requirement
 | Hermes 对 Python 3.12 的实际兼容性 | H0 固定上游提交后运行完整测试；不以文档推断代替验证 |
 | Hermes 内部状态格式与工作区目录的冲突 | 保留 Hermes session persistence，通过 adapter 引入 artifact 和恢复元数据，避免双状态机 |
 | 同一会话多节点并发写入 | chatrtmgr 提供唯一执行权；共享 FS 不充当分布式锁 |
+| 多个 chatsvc 共享 Harness 导致多租户串线和节点级故障域 | 固定 `chatsvc : Harness = 1 : 1`；一个 Harness 仅复用所属 chatsvc 的多个 session，跨 chatsvc 共享需作为全新架构重新评审 |
+| chatsvc 被终止后遗留孤儿 Harness | 子进程退出契约结合 parent-death signal、进程组、cgroup/container 或等价机制；E2E 覆盖正常退出与强杀路径 |
 | 未知结果的外部副作用 | 持久化 intent 与 tool policy；默认 fail closed，不自动重放 |
 | Hermes 上游升级冲突 | 完整 fork 保留 upstream remote；升级分支先验证上游，再更新 allowlist、patch series 和 vendor snapshot |
 | Hermes 裁剪遗漏动态依赖 | 结合 import/resource tracing、能力矩阵和异常恢复测试维护 allowlist；不得只依据静态 import 判断 |

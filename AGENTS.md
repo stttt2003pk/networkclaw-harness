@@ -6,6 +6,8 @@ This repository is the customer-deliverable, headless Harness described by
 ## Invariants
 
 - Target CPython 3.12 only.
+- This Harness is the extracted coordinator/agent kernel. `chatsvc` is its future host adapter;
+  never create or preserve a second coordinator loop in `chatsvc` as the target architecture.
 - Keep `src/networkclaw_harness` independent from the full Hermes checkout.
 - Never hand-edit `vendor/hermes`; update it through `scripts/sync-hermes-runtime.py`.
 - A vendor update must retain its source commit, allowlist, patch series and file hashes.
