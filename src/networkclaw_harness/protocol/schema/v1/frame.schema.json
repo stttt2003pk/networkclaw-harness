@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://networkclaw.local/harness/protocol/v1/frame.schema.json",
+  "title": "NetworkClaw Harness input frame",
+  "type": "object",
+  "required": ["protocol_version", "type", "request_id"],
+  "properties": {
+    "protocol_version": { "const": "1.0" },
+    "type": { "type": "string", "minLength": 1 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "turn_id": { "type": "string", "minLength": 1 },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}
+

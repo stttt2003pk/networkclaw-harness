@@ -1,0 +1,10 @@
+{
+  "name": "customer",
+  "browser_enabled": false,
+  "network_enabled": false,
+  "shell_enabled": true,
+  "runtime_skill_install_enabled": false,
+  "runtime_tool_install_enabled": false,
+  "self_evolution_enabled": false
+}
+

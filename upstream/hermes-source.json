@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/stttt2003pk/networkclaw-harness.git",
+  "upstream_repository": "https://github.com/NousResearch/hermes-agent.git",
+  "commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "captured_at": "2026-09-17T00:00:00Z",
+  "status": "bootstrap-source-only",
+  "note": "The repository was initialized from this complete Hermes commit. No runtime allowlist has been accepted yet."
+}
+

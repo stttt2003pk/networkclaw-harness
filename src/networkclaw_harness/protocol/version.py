@@ -1,0 +1,5 @@
+"""Protocol version declarations."""
+
+PROTOCOL_VERSION = "1.0"
+SUPPORTED_PROTOCOL_VERSIONS = (PROTOCOL_VERSION,)
+

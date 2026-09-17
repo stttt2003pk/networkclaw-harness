@@ -1,0 +1,3 @@
+# H0 bootstrap has no third-party runtime dependencies.
+# Future entries must be fully pinned and include --hash=sha256:... values.
+
