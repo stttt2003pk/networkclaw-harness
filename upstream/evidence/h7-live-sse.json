@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "status": "live_verified",
+  "verified_at": "2026-09-18",
+  "provider": "openai-compatible",
+  "model": "gpt-5.6-sol",
+  "endpoint_host": "api.muskapis.com",
+  "event_types": [
+    "request.accepted",
+    "turn.started",
+    "plan.updated",
+    "assistant.delta",
+    "turn.completed",
+    "assistant.delta",
+    "end"
+  ],
+  "live_delta_count": 6,
+  "final_delta_count": 1,
+  "terminal_state": "completed",
+  "sequence_monotonic": true,
+  "secret_in_protocol": false,
+  "notes": "A real SSE response emitted six non-final assistant deltas before the terminal state. The final durable assistant delta remained available for replay/history."
+}

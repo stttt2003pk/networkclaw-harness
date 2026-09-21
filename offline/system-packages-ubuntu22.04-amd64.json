@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "target": "ubuntu-22.04-linux-amd64",
+  "runtime_packages": [],
+  "note": "The OCI image needs no host packages. CPython and its OS libraries come from the reviewed, digest-bound base image."
+}

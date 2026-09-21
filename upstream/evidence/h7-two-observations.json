@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "status": "live_verified",
+  "provider": "openai-compatible",
+  "model": "gpt-5.6-sol",
+  "endpoint_host": "api.muskapis.com",
+  "hermes_source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "tool_rounds": 2,
+  "invocation_ids_distinct": true,
+  "event_types": ["plan.updated", "tool.started", "tool.completed", "turn.completed", "assistant.delta"],
+  "terminal_state": "completed",
+  "secret_in_protocol": false,
+  "notes": "The live endpoint produced two distinct host_bash observations (pwd and cat) with stable invocation IDs, then returned a verified final response. The run used an explicitly configured 300-second development budget; production profiles retain their own bounded timeout."
+}

@@ -1,0 +1,27 @@
+{
+  "hermes_source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "local_probes": {
+    "all_local_probes_passed": true,
+    "checkpoint_epoch": 1,
+    "checkpoint_resume": true,
+    "compaction": "hermes-reference-v1",
+    "durable_cursor": 2,
+    "durable_cursor_monotonic": true,
+    "summary_artifact": true,
+    "tail_repair_drops_unmatched_call": true,
+    "workspace_reopened": true
+  },
+  "long_context": true,
+  "provider": "none",
+  "reconnect_resume": true,
+  "retirement": {
+    "can_retire": false,
+    "reasons": [
+      "missing_live_evidence"
+    ],
+    "rollback_admission": "Keep coordinator_fixture available only for explicit development/test admission"
+  },
+  "schema_version": 1,
+  "status": "local_contract_verified",
+  "unknown_side_effect_replay": false
+}

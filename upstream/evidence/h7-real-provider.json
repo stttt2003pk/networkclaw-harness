@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "live_verified",
+  "provider": "openai-compatible",
+  "model": "gpt-5.6-sol",
+  "endpoint_host": "api.muskapis.com",
+  "hermes_source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "tool_rounds": 1,
+  "event_types": ["plan.updated", "tool.started", "tool.completed", "turn.completed", "assistant.delta"],
+  "terminal_state": "completed",
+  "secret_in_protocol": false,
+  "notes": "A live development run completed through the Harness coordinator with host_bash. Multi-round and failure behavior are covered by offline provider contracts."
+}

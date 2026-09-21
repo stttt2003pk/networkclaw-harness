@@ -4,21 +4,28 @@ NetworkClaw Harness is the customer-deliverable, headless session kernel that wi
 traceable Hermes runtime snapshot behind a versioned JSONL protocol. It is intentionally
 separate from the full Hermes fork.
 
-This repository is the evolution of the earlier coordinator semantic-runtime design: the
-coordinator and agent loop move out of `chatsvc` into this Harness. In the target architecture,
-`chatsvc` is the host adapter and lifecycle/transport boundary; the Harness is the session's
-single decision-making kernel. The two components must not retain parallel coordinator loops.
+This repository is the extracted Hermes Agent kernel behind a host-owned boundary. In the target
+architecture, an external distributed platform supplies identity, workspace, lease and lifecycle;
+`chatsvc` is one possible transport host; this Harness is the session's single decision-making
+runtime. The host and Harness must not maintain a second planning or agent loop.
 
-The repository-owned architecture source is
-[`src/networkclaw_harness/docs/hermes-headless-harness.md`](src/networkclaw_harness/docs/hermes-headless-harness.md).
+The architecture and implementation source is
+[`src/networkclaw_harness/docs/architecture.md`](src/networkclaw_harness/docs/architecture.md),
+with the only active plan in
+[`src/networkclaw_harness/docs/plan/implementation-plan.md`](src/networkclaw_harness/docs/plan/implementation-plan.md).
 
-This repository is currently at the **H0 bootstrap** stage:
+The repository is currently in a **Hermes core integration baseline**:
 
 - the Python 3.12 package and headless JSONL process exist;
 - protocol envelopes, workspace binding and safe event projection have baseline tests;
 - Hermes source provenance, allowlist sync and vendor hash verification are automated;
-- the actual Hermes runtime allowlist and adapter are not yet accepted, so `user.input`
-  fails explicitly with `runtime_unavailable` instead of pretending H1 is complete.
+- the Hermes runtime snapshot and the NetworkClaw protocol/workspace layers exist;
+- the production CLI has one runtime entry: the native Hermes adapter;
+- legacy reference runtimes and the former self-built coordinator are not shipped or selectable.
+
+The native probe and adapter acceptance establish that Hermes' `AIAgent.run_conversation()` runs
+inside a host-assigned workspace with Harness callbacks and tool policy. Distributed placement,
+lease authority and production failover remain responsibilities of the integrating platform.
 
 ## Layout
 
@@ -67,5 +74,5 @@ python scripts/verify-hermes-vendor.py
 
 The sync script copies only allowlisted files, applies `upstream/patches/*.patch`, and writes
 `upstream/hermes-vendor-manifest.json` with the source commit and post-patch SHA-256 hashes.
-The current script accepts the temporary worktree path explicitly; H0 will remove this manual
-step by creating the worktree/archive from the pinned ancestor commit itself.
+The source path is explicit so the snapshot can be reviewed and reproduced offline. Vendor updates
+are release inputs, not runtime downloads.

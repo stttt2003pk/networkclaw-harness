@@ -1,0 +1,21 @@
+{
+  "entry_points": [
+    "agent.conversation_loop",
+    "agent.context_engine",
+    "agent.context_compressor",
+    "agent.memory_manager",
+    "agent.provider_base",
+    "tools.registry",
+    "agent.skill_commands",
+    "agent.browser_registry",
+    "agent.subagent_lifecycle",
+    "mcp_serve",
+    "run_agent"
+  ],
+  "generated_at": "2026-09-17T10:39:44.573310Z",
+  "probe_id": "H0-import-trace",
+  "python": "3.12.2",
+  "result": "passed",
+  "source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "source_files": 519
+}

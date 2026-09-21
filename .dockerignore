@@ -1,0 +1,14 @@
+.git
+.idea
+.venv
+venv
+dist
+build
+.pytest_cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+tests
+deploy
+LICENSES
+*.egg-info

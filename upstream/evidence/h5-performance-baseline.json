@@ -1,0 +1,51 @@
+{
+  "checks": {
+    "backpressure": true,
+    "cold_start": true,
+    "fairness": true,
+    "first_token": true,
+    "memory": true,
+    "scheduler": true
+  },
+  "environment": {
+    "platform": "darwin",
+    "python": "3.12.0"
+  },
+  "measurements": {
+    "backpressure_enforced": true,
+    "cold_start_p50_ms": 135.08891686797142,
+    "cold_start_p95_ms": 144.88899987190962,
+    "concurrent_sessions": 64,
+    "fairness_max_lead": 0,
+    "first_token_p50_ms": 0.0051246024668216705,
+    "first_token_p95_ms": 0.02670893445611,
+    "rss_bytes": 27574272,
+    "scheduler_operations": 1024,
+    "scheduler_ops_per_second": 1753176.457099851,
+    "subagent_peak": 8,
+    "tool_peak": 16
+  },
+  "optimization": {
+    "idle_reclaim_seconds": 900,
+    "lazy_browser": true,
+    "lazy_mcp": true,
+    "lazy_provider": true,
+    "lazy_start": true,
+    "prewarm": "allowed only before exclusive lease to one chatsvc"
+  },
+  "ownership": "one Harness remains exclusively owned by one chatsvc",
+  "scenario": {
+    "queued_per_session": 16,
+    "sessions": 64,
+    "subagent_peak": 8,
+    "tool_peak": 16
+  },
+  "schema_version": 1,
+  "status": "passed",
+  "thresholds": {
+    "cold_start_p95_ms": 3000.0,
+    "first_token_p95_ms": 100.0,
+    "rss_bytes": 536870912,
+    "scheduler_ops_per_second": 100.0
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "fixture": "import-safe headless boundary; no provider, UI, network, or runtime download",
+  "generated_at": "2026-09-17T10:32:56.620696Z",
+  "imports": {
+    "agent": "agent/__init__.py",
+    "hermes_constants": "hermes_constants.py",
+    "tools": "tools/__init__.py"
+  },
+  "probe_id": "H0-P01",
+  "profiles": [
+    "development",
+    "customer"
+  ],
+  "python": "3.12.0",
+  "result": "passed",
+  "source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "source_kind": "vendor_snapshot"
+}

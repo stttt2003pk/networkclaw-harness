@@ -1,0 +1,77 @@
+From: NetworkClaw Harness <noreply@networkclaw.local>
+Subject: [PATCH] add host-controlled child allocation hook
+
+Upstream: NousResearch/hermes-agent@6005aa1fd9aac8b1024ace50fec8cd1c85a04bae
+Reason: A headless distributed host must assign child identity, workspace and
+budget before an AIAgent is constructed. Detached children cannot outlive the
+parent ownership boundary.
+Removal: Drop when upstream exposes an equivalent typed pre-spawn allocation
+hook with synchronous child cleanup.
+
+--- a/tools/delegate_tool.py
++++ b/tools/delegate_tool.py
+@@ -230,11 +230,25 @@
+     else:
+         request_overrides = {} if override_provider else dict(getattr(parent_agent, "request_overrides", {}) or {})
+     parent_sid = getattr(parent_agent, "session_id", None)
+-    child_session_db = _open_child_session_db(parent_agent)
++    host_grant = None
++    take_host_grant = getattr(parent_agent, "_networkclaw_take_delegation_grant", None)
++    if callable(take_host_grant):
++        host_grant = take_host_grant(
++            task_index=task_index, task_count=task_count, depth=child_depth,
++            requested_iterations=max_iterations,
++        )
++        if not isinstance(host_grant, dict):
++            raise ValueError("host delegation allocation returned an invalid grant")
++        if not host_grant.get("session_id") or not host_grant.get("cwd") or host_grant.get("session_db") is None:
++            raise ValueError("host delegation allocation omitted identity, workspace, or session database")
++        max_iterations = min(max_iterations, int(host_grant.get("max_iterations") or max_iterations))
++    child_session_db = host_grant["session_db"] if host_grant is not None else _open_child_session_db(parent_agent)
+     with delegated_child_context():
+         try:
+             child = AIAgent(
+                 **rt, max_iterations=max_iterations, prefill_messages=getattr(parent_agent, "prefill_messages", None),
++                session_id=host_grant.get("session_id") if host_grant else None,
++                cwd=host_grant.get("cwd") if host_grant else None,
+                 enabled_toolsets=child_toolsets, disabled_toolsets=child_disabled_toolsets, quiet_mode=True,
+                 ephemeral_system_prompt=child_prompt, log_prefix=f"[subagent-{task_index}]", platform="subagent",
+                 skip_context_files=True, skip_memory=True, clarify_callback=None,
+@@ -262,6 +276,8 @@
+     child_session_ref["session_id"] = getattr(child, "session_id", "") or ""
+     child._progress_identity_ref = child_session_ref
+     child._delegate_depth, child._delegate_role = child_depth, effective_role  # post-degrade role
++    if host_grant is not None:
++        child._networkclaw_allocation_id = host_grant.get("allocation_id")
+     child._subagent_id, child._parent_subagent_id = subagent_id, parent_subagent_id
+     _apply_child_compression_cap(child, delegation_cfg)
+     # Ownership chain for action=list/steer/stop; weakref so a finished parent
+@@ -446,6 +462,10 @@
+     # that joins on every child and re-enters as a single consolidated message.
+     background = is_truthy_value(background, default=False) if background is not None else False
+ 
++    host_controlled = callable(getattr(parent_agent, "_networkclaw_take_delegation_grant", None))
++    if host_controlled and background:
++        return tool_error("Host-controlled delegation requires foreground result aggregation.")
++
+     depth = getattr(parent_agent, "_delegate_depth", 0)
+     max_spawn = _get_max_spawn_depth()
+     if depth >= max_spawn:
+@@ -503,7 +523,16 @@
+         task_list, children, parent_agent, creds, context, top_role, max_children,
+         live_deleg_id, live_writers, live_paths, *origin, overall_start,
+     )
+-    return _run_batch(batch, background)
++    allocation_ids = [
++        value for _, _, child in children
++        if (value := getattr(child, "_networkclaw_allocation_id", None))
++    ]
++    try:
++        return _run_batch(batch, background)
++    finally:
++        release = getattr(parent_agent, "_networkclaw_release_delegation_grants", None)
++        if callable(release) and allocation_ids:
++            release(allocation_ids)
+ 
+ 
+ # ── OpenAI function-calling schema ──────────────────────────────────────────

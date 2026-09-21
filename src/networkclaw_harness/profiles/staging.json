@@ -1,0 +1,42 @@
+{
+  "name": "staging",
+  "browser_enabled": false,
+  "network_enabled": true,
+  "shell_enabled": true,
+  "runtime_skill_install_enabled": false,
+  "runtime_tool_install_enabled": false,
+  "self_evolution_enabled": false,
+  "turn_budget": {"max_steps": 36, "max_retries": 5, "max_actions": 64, "timeout_seconds": 180},
+  "provider": {
+    "live_enabled": true,
+    "credential_source": "deployment_secret_manager",
+    "allowed_egress_hosts": ["api.openai.com"],
+    "streaming_enabled": true
+  },
+  "capacity": {
+    "concurrent_sessions": 32,
+    "concurrent_runs": 4,
+    "concurrent_tools": 8,
+    "concurrent_subagents": 4,
+    "token_budget": 500000,
+    "queue_depth": 32,
+    "cpu_cores": 2,
+    "memory_bytes": 2147483648,
+    "open_files": 512,
+    "subprocesses": 16,
+    "browser_contexts": 1,
+    "mcp_servers": 4,
+    "idle_reclaim_seconds": 900,
+    "lazy_start": true,
+    "lazy_provider": true,
+    "lazy_browser": true,
+    "lazy_mcp": true
+  },
+  "workspace_quotas": {
+    "tenant_bytes": 10737418240,
+    "session_bytes": 1073741824,
+    "session_files": 10000,
+    "single_file_bytes": 268435456,
+    "tmp_bytes": 268435456
+  }
+}

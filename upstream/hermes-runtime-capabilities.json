@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "boundary_categories": ["direct", "adapter", "fork", "disabled"],
+  "entries": [
+    {"capability":"turn.iteration_budget","hermes":"agent.iteration_budget.IterationBudget","boundary":"direct","owner":"networkclaw_harness.runtime.progress.RunBudget","lifecycle":"per-run","adapter":"RunBudget","forbidden_globals":[]},
+    {"capability":"turn.tool_guardrails","hermes":"agent.tool_guardrails.ToolCallGuardrailController","boundary":"direct","owner":"networkclaw_harness.runtime.hermes_parity.ToolGuardrailController","lifecycle":"per-turn","adapter":"ToolGuardrailController","forbidden_globals":["cwd","HERMES_HOME"]},
+    {"capability":"context.compaction","hermes":"agent.context_compressor","boundary":"adapter","owner":"networkclaw_harness.runtime.context.CompactionService","lifecycle":"per-session","adapter":"HermesCompactionPort","forbidden_globals":["global session"]},
+    {"capability":"state.session_db","hermes":"hermes_state.SessionDB","boundary":"adapter","owner":"networkclaw_harness.runtime.hermes_bootstrap.HermesRuntimeBootstrap","lifecycle":"per-session","adapter":"HermesSessionPersistence","forbidden_globals":["cwd","HOME","HERMES_HOME"]},
+    {"capability":"provider.transport","hermes":"agent.providers / agent.transports","boundary":"adapter","owner":"networkclaw_harness.runtime.provider.ProviderRuntime","lifecycle":"per-run","adapter":"ProviderRuntime","forbidden_globals":["ambient credentials"]},
+    {"capability":"tools.dynamic_install","hermes":"tools.lazy_deps","boundary":"disabled","owner":"networkclaw_harness.policies.profiles.RuntimeProfile","lifecycle":"process","adapter":"none","forbidden_globals":["runtime installation"]},
+    {"capability":"gateway.coordinator_loop","hermes":"agent.conversation_loop","boundary":"disabled","owner":"networkclaw_harness.runtime.agent_loop.CoordinatorLoop","lifecycle":"per-run","adapter":"single Harness loop","forbidden_globals":["second coordinator loop"]}
+  ],
+  "forks": [],
+  "closure": {
+    "allowlist": "upstream/hermes-runtime-files.txt",
+    "allowlist_sha256": "173e8bcf5aaa986309582112a50a308666dc05325e19db7662e218058f338ec9"
+  }
+}

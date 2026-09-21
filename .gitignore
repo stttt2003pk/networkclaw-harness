@@ -15,6 +15,3 @@ build/
 offline/wheels/*
 !offline/wheels/.gitkeep
 offline/release-manifest.json
-vendor/hermes/*
-!vendor/hermes/.gitkeep
-

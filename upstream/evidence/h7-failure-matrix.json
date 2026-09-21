@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "status": "offline_contract_verified",
+  "provider": "openai-compatible",
+  "cases": {
+    "missing_credentials": "provider_credentials_missing",
+    "unauthorized_model": "model_not_authorized",
+    "unauthorized_http": "provider_unauthorized",
+    "rate_limited": "provider_rate_limited",
+    "timeout_or_unavailable": "provider_unavailable",
+    "server_error": "provider_http_error",
+    "invalid_json": "provider_response_invalid",
+    "sse_interrupted": "provider_stream_interrupted",
+    "fallback_after_retryable_failure": "covered_by_provider_runtime_contract",
+    "cancel": "covered_by_interaction_control_contract",
+    "approval_reject": "covered_by_interaction_control_contract",
+    "lease_fencing": "covered_by_recovery_contract",
+    "unknown_result_no_replay": "covered_by_recovery_contract"
+  },
+  "secret_in_protocol": false,
+  "tests": "scripts/run_tests.sh",
+  "tests_passed": 155,
+  "notes": "This is an offline contract report. Live staging still must verify endpoint-specific SSE delivery, deployment metrics export, and customer profile wiring."
+}

@@ -9,7 +9,13 @@ description = "NetworkClaw headless Hermes harness"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 authors = [{ name = "NetworkClaw" }]
-dependencies = []
+dependencies = [
+  "openai>=2.24.0,<3",
+  "python-dotenv>=1.2.2,<2",
+  "httpx[socks]>=0.28.1,<0.29",
+  "requests>=2.33.0,<2.33.1",
+  "pyyaml>=6.0.3,<7",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -26,9 +32,15 @@ description = "NetworkClaw headless Hermes harness"
 authors = ["NetworkClaw"]
 readme = "README.md"
 packages = [{ include = "networkclaw_harness", from = "src" }]
+include = ["src/networkclaw_harness/skills/builtin/**"]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
+openai = ">=2.24.0,<3"
+python-dotenv = ">=1.2.2,<2"
+httpx = {version = ">=0.28.1,<0.29", extras = ["socks"]}
+requests = ">=2.33.0,<2.33.1"
+pyyaml = ">=6.0.3,<7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.3,<9"

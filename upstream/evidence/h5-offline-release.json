@@ -1,0 +1,13 @@
+{
+  "cache": "empty",
+  "core_regression": true,
+  "headless_demo": true,
+  "image_digest": "sha256:60c0580514bb304b03759d69e1a82f4d3a070dacd2c583619a0ab6168fc6aec9",
+  "image_rebuilt": true,
+  "network": "disabled",
+  "python_artifacts_reproducible": true,
+  "release_version": "0.1.0",
+  "schema_version": 1,
+  "source_commit": "9d74a5783df749d24646e62b6c4985b5a6e04984",
+  "status": "passed"
+}

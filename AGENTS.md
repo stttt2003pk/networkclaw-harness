@@ -1,13 +1,17 @@
 # NetworkClaw Harness Development Guide
 
 This repository is the customer-deliverable, headless Harness described by
-`src/networkclaw_harness/docs/hermes-headless-harness.md`.
+`src/networkclaw_harness/docs/architecture.md` and
+`src/networkclaw_harness/docs/plan/implementation-plan.md`.
 
 ## Invariants
 
 - Target CPython 3.12 only.
-- This Harness is the extracted coordinator/agent kernel. `chatsvc` is its future host adapter;
-  never create or preserve a second coordinator loop in `chatsvc` as the target architecture.
+- This Harness is the extracted Hermes Agent kernel. An external distributed platform supplies its
+  Host Adapter; `chatsvc` is one possible host and must never contain a second agent loop.
+- Treat the Harness as a dedicated execution server. Capabilities that cannot satisfy explicit
+  distributed ownership, session isolation, lease fencing and recovery must be externalized or
+  developed as separate components rather than embedded into the Harness core.
 - Keep `src/networkclaw_harness` independent from the full Hermes checkout.
 - Never hand-edit `vendor/hermes`; update it through `scripts/sync-hermes-runtime.py`.
 - A vendor update must retain its source commit, allowlist, patch series and file hashes.

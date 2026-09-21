@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-09-17T10:53:54.764273Z",
+  "probe_id": "H0-P02-P08-fixture-suite",
+  "result": "passed",
+  "source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "source_kind": "vendor_snapshot",
+  "test_files": [
+    "agent/test_context_compressor.py",
+    "agent/test_memory_provider.py",
+    "agent/test_provider_client_seam.py",
+    "agent/test_provider_fallback.py",
+    "agent/test_skill_utils.py",
+    "agent/test_subagent_lifecycle.py",
+    "plugins/browser/test_browser_provider_plugins.py",
+    "tools/test_registry.py",
+    "tools/test_memory_tool_schema.py",
+    "tools/test_mcp_schema_cache.py",
+    "tools/test_delegate_subagent_timeout_diagnostic.py",
+    "test_mcp_serve.py"
+  ],
+  "tests_passed": 461
+}

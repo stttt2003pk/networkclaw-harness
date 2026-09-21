@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "status": "local_staging_wiring_verified",
+  "checks": {
+    "harness_stream_handle": true,
+    "live_sse_before_terminal": true,
+    "chatsvc_stream_client": true,
+    "chatrtmgr_metrics_relay_path": true,
+    "harness_metrics_query": true,
+    "config_environment_frozen_per_run": true,
+    "customer_egress_requires_allowlist": true,
+    "staging_profile_has_explicit_egress": true,
+    "offline_regression": true
+  },
+  "live_provider_staging": "development endpoint verified; target customer environment remains external",
+  "tests": {
+    "harness": "158 passed",
+    "networkclaw": "go test ./internal/chatsvc/harness ./internal/chatsvc/session ./cmd/chatsvc ./internal/chatrtmgr/forwarder ./cmd/chatrtmgr"
+  },
+  "notes": "This evidence proves repository wiring and local streaming/metrics/profile contracts. It does not claim customer production traffic or cost exporter availability."
+}

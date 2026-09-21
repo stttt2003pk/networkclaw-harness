@@ -9,6 +9,51 @@
       "version": "0.1.0"
     }
   },
-  "components": []
+  "components": [
+    {
+      "type": "library",
+      "name": "hermes-agent-runtime-snapshot",
+      "version": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/NousResearch/hermes-agent.git@6005aa1fd9aac8b1024ace50fec8cd1c85a04bae"
+        }
+      ],
+      "properties": [
+        {
+          "name": "networkclaw:vendor-manifest",
+          "value": "upstream/hermes-vendor-manifest.json"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "name": "networkclaw-skill-workspace-inspection",
+      "version": "1.0.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "364629504dd6eff5c7e0afc177f166f9ee16d0e79845fa74059678d40bfb944b"
+        }
+      ],
+      "properties": [
+        {
+          "name": "networkclaw:source",
+          "value": "src/networkclaw_harness/skills/builtin/workspace-inspection/SKILL.md"
+        },
+        {
+          "name": "networkclaw:release-hash",
+          "value": "builtin-v1"
+        }
+      ]
+    }
+  ]
 }
-

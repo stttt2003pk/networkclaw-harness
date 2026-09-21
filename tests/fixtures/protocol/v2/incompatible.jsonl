@@ -1,0 +1,1 @@
+{"protocol_version":"1.0","type":"protocol.negotiate","request_id":"incompatible-version","payload":{"supported_protocol_versions":["2.0"]}}

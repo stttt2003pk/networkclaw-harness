@@ -5,6 +5,38 @@
   "shell_enabled": true,
   "runtime_skill_install_enabled": false,
   "runtime_tool_install_enabled": false,
-  "self_evolution_enabled": false
+  "self_evolution_enabled": false,
+  "turn_budget": {"max_steps": 48, "max_retries": 8, "max_actions": 128, "timeout_seconds": 300},
+  "provider": {
+    "live_enabled": true,
+    "credential_source": "development_wrapper_or_secret_manager",
+    "allowed_egress_hosts": [],
+    "streaming_enabled": true
+  },
+  "capacity": {
+    "concurrent_sessions": 128,
+    "concurrent_runs": 16,
+    "concurrent_tools": 32,
+    "concurrent_subagents": 16,
+    "token_budget": 2000000,
+    "queue_depth": 128,
+    "cpu_cores": 4,
+    "memory_bytes": 4294967296,
+    "open_files": 1024,
+    "subprocesses": 32,
+    "browser_contexts": 4,
+    "mcp_servers": 16,
+    "idle_reclaim_seconds": 1800,
+    "lazy_start": true,
+    "lazy_provider": true,
+    "lazy_browser": true,
+    "lazy_mcp": true
+  },
+  "workspace_quotas": {
+    "tenant_bytes": 21474836480,
+    "session_bytes": 2147483648,
+    "session_files": 20000,
+    "single_file_bytes": 536870912,
+    "tmp_bytes": 536870912
+  }
 }
-

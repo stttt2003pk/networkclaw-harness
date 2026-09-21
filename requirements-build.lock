@@ -1,0 +1,3 @@
+# PEP 517 backend used to rebuild wheel and sdist without network access.
+poetry-core==2.2.1 \
+    --hash=sha256:bdfce710edc10bfcf9ab35041605c480829be4ab23f5bc01202cfe5db8f125ab

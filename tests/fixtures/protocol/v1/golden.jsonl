@@ -1,0 +1,4 @@
+{"protocol_version":"1.0","type":"protocol.negotiate","request_id":"golden-negotiate","payload":{"supported_protocol_versions":["1.0"]}}
+{"protocol_version":"1.0","type":"health.query","request_id":"golden-health"}
+{"protocol_version":"1.0","type":"capabilities.query","request_id":"golden-capabilities"}
+{"protocol_version":"1.0","type":"shutdown","request_id":"golden-shutdown"}

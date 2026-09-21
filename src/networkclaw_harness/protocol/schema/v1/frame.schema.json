@@ -1,17 +1,34 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://networkclaw.local/harness/protocol/v1/frame.schema.json",
-  "title": "NetworkClaw Harness input frame",
+  "title": "NetworkClaw Harness Host Protocol v1 frame",
   "type": "object",
   "required": ["protocol_version", "type", "request_id"],
   "properties": {
     "protocol_version": { "const": "1.0" },
-    "type": { "type": "string", "minLength": 1 },
-    "request_id": { "type": "string", "minLength": 1 },
-    "session_id": { "type": "string", "minLength": 1 },
-    "turn_id": { "type": "string", "minLength": 1 },
-    "payload": { "type": "object" }
+    "type": { "$ref": "#/$defs/opaque" },
+    "request_id": { "$ref": "#/$defs/opaque" },
+    "tenant_id": { "$ref": "#/$defs/opaque" },
+    "user_id": { "$ref": "#/$defs/opaque" },
+    "session_id": { "$ref": "#/$defs/opaque" },
+    "turn_id": { "$ref": "#/$defs/opaque" },
+    "trace_id": { "$ref": "#/$defs/opaque" },
+    "deadline": { "$ref": "#/$defs/opaque" },
+    "run_id": { "$ref": "#/$defs/opaque" },
+    "event_id": { "$ref": "#/$defs/opaque" },
+    "invocation_id": { "$ref": "#/$defs/opaque" },
+    "parent_item_id": { "$ref": "#/$defs/opaque" },
+    "interaction_id": { "$ref": "#/$defs/opaque" },
+    "artifact_id": { "$ref": "#/$defs/opaque" },
+    "cursor": { "$ref": "#/$defs/opaque" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "metadata": { "type": "object" },
+    "payload": { "type": "object" },
+    "end": { "type": "boolean" }
+  },
+  "$defs": {
+    "opaque": { "type": "string", "minLength": 1, "pattern": "^[\\x20-\\x7E]+$" }
   },
   "additionalProperties": false
 }
-

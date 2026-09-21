@@ -1,0 +1,52 @@
+{
+  "differences": [],
+  "harness": {
+    "compactions": 0,
+    "exit_reason": "completed",
+    "fallbacks": 0,
+    "finalizer": "completed",
+    "iterations": 1,
+    "provider_calls": 1,
+    "refunds": 0,
+    "retries": 0,
+    "segments": 1,
+    "timeline": [
+      "provider.completed",
+      "tool.completed",
+      "finalizer.completed"
+    ],
+    "tool_calls": 1,
+    "tool_rounds": 1,
+    "transcript_tail": [
+      "ok"
+    ],
+    "unknown_effects": 0,
+    "warnings": []
+  },
+  "hermes": {
+    "compactions": 0,
+    "exit_reason": "completed",
+    "fallbacks": 0,
+    "finalizer": "completed",
+    "iterations": 1,
+    "provider_calls": 1,
+    "refunds": 0,
+    "retries": 0,
+    "segments": 1,
+    "timeline": [
+      "provider.completed",
+      "tool.completed",
+      "finalizer.completed"
+    ],
+    "tool_calls": 1,
+    "tool_rounds": 1,
+    "transcript_tail": [
+      "ok"
+    ],
+    "unknown_effects": 0,
+    "warnings": []
+  },
+  "live_dependencies": [],
+  "passed": true,
+  "scenario": "deterministic-happy-path"
+}
