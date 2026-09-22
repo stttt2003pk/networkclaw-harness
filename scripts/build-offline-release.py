@@ -217,6 +217,10 @@ def _image_identity(args: argparse.Namespace, source: Path, wheelhouse: Path, im
                 "archive": None, "archive_sha256": None}
     archive = image_dir / f"networkclaw-harness-{version}-linux-amd64.oci.tar"
     tag = f"networkclaw-harness:{version}-h5"
+    # ``source_files`` intentionally excludes the offline wheelhouse from the source archive,
+    # but the Dockerfile needs the exact wheelhouse in its network-isolated build context.
+    # Inject it only into this temporary image context; the signed source archive remains lean.
+    _populate_image_wheelhouse(source, wheelhouse)
     command = [
         "docker", "build", "--platform=linux/amd64", "--network=none",
         "--build-arg", f"SOURCE_COMMIT={commit}",
@@ -242,6 +246,13 @@ def _image_identity(args: argparse.Namespace, source: Path, wheelhouse: Path, im
         "archive": archive.relative_to(image_dir.parent).as_posix(),
         "archive_sha256": sha256_file(archive),
     }
+
+
+def _populate_image_wheelhouse(source: Path, wheelhouse: Path) -> None:
+    image_wheelhouse = source / "offline" / "wheels"
+    image_wheelhouse.mkdir(parents=True, exist_ok=True)
+    for wheel in sorted(wheelhouse.glob("*.whl")):
+        shutil.copy2(wheel, image_wheelhouse / wheel.name)
 
 
 def _write_sboms(destination: Path, version: str, commit: str, source_digest: str,

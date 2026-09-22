@@ -1,0 +1,55 @@
+{
+  "acceptance": {
+    "go_interop": "go test ./tests/integration/harnessinterop -count=1",
+    "go_race": "go test -race ./internal/chatsvc/harness ./internal/chatsvc/session -count=1",
+    "harness": "scripts/run_tests.sh -q",
+    "offline_verifier": "scripts/verify-offline-release.py"
+  },
+  "generated_at": "2026-09-22T12:30:13.743323Z",
+  "hermes": {
+    "source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+    "vendor_manifest_sha256": "9b146a9a2b9da29130825bd1c41b59eb6b7991101c123d904443eb118db6511a"
+  },
+  "host_protocol": {
+    "epoch_fencing": "strict-monotonic",
+    "terminal_fields": [
+      "outcome",
+      "reason_code",
+      "execution_epoch",
+      "generation",
+      "end"
+    ],
+    "terminal_types": [
+      "turn.completed",
+      "turn.failed",
+      "turn.cancelled"
+    ],
+    "version": "1.0"
+  },
+  "profiles": {
+    "python": "CPython 3.12",
+    "target": "ubuntu-22.04-linux-amd64-cp312"
+  },
+  "publishable": false,
+  "reason_codes": [
+    "user_cancel",
+    "platform_lease_lost",
+    "epoch_takeover",
+    "provider_interrupted",
+    "turn_timeout",
+    "liveness_timeout",
+    "session_closed",
+    "harness_shutdown"
+  ],
+  "repositories": {
+    "networkclaw": {
+      "commit": "1bb072599e2fa2bf2999f027f3596ac30c6ca413",
+      "dirty": true
+    },
+    "networkclaw_harness": {
+      "commit": "35f0b8cba8b4011defeca4b2749badbbd1bc8f9b",
+      "dirty": true
+    }
+  },
+  "schema_version": 1
+}

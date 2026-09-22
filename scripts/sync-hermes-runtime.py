@@ -65,6 +65,8 @@ def verified_vendored_source(expected_commit: str) -> Path:
     actual = {
         path.relative_to(vendor).as_posix(): sha256(path)
         for path in sorted(vendor.rglob("*")) if path.is_file() and path.name != ".gitkeep"
+        and "__pycache__" not in path.relative_to(vendor).parts
+        and path.suffix not in {".pyc", ".pyo"}
     }
     if actual != manifest.get("files"):
         raise SystemExit("vendored source snapshot failed its file hash manifest")

@@ -1,4 +1,4 @@
-"""Bounded fair admission queues for protocol-visible session work."""
+"""Bounded protocol admission queues, not placement or tenant scheduling."""
 
 from __future__ import annotations
 
@@ -17,7 +17,12 @@ class ScheduledCommand:
 
 
 class AdmissionScheduler:
-    """Prioritize controls and round-robin normal work across sessions."""
+    """Bound protocol buffering and prioritize controls already in this process.
+
+    This is a local hard-safety guard for oversized input bursts.  It does not own
+    placement, tenant quota, process capacity, or platform fairness; the host calls
+    ``next`` immediately after ``submit`` and the external platform remains authoritative.
+    """
 
     def __init__(self, *, per_session_limit: int = 64) -> None:
         self._limit = per_session_limit

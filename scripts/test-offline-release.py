@@ -7,6 +7,8 @@ import argparse
 import io
 import json
 import os
+import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,6 +30,8 @@ def main() -> int:
     subprocess.run([sys.executable, str(Path(__file__).with_name("verify-offline-release.py")), str(release)], check=True)
     manifest = json.loads((release / "release-manifest.json").read_text(encoding="utf-8"))
 
+    _require_target_platform(manifest)
+
     with tempfile.TemporaryDirectory(prefix="networkclaw-offline-acceptance-") as temporary:
         root = Path(temporary)
         source_archive = next((release / "artifacts").glob("*-source.tar.gz"))
@@ -41,6 +45,7 @@ def main() -> int:
         sealed = {
             **os.environ,
             "PIP_NO_INDEX": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
             "http_proxy": "", "https_proxy": "", "HTTP_PROXY": "", "HTTPS_PROXY": "",
             "NO_PROXY": "*", "SOURCE_DATE_EPOCH": str(_epoch(manifest["generated_at"])),
         }
@@ -68,7 +73,7 @@ def main() -> int:
         ], env=sealed, check=True)
         if not args.skip_regression:
             subprocess.run([str(source / "scripts/run_tests.sh")], cwd=source, env=sealed, check=True)
-        _headless_demo(python, sealed)
+        _headless_demo(python, sealed, source)
         if not args.skip_image:
             _image_rebuild(source, offline, manifest)
 
@@ -91,7 +96,7 @@ def main() -> int:
     return 0
 
 
-def _headless_demo(python: Path, environment: dict[str, str]) -> None:
+def _headless_demo(python: Path, environment: dict[str, str], source: Path) -> None:
     frames = (
         {"protocol_version": "1.0", "type": "protocol.negotiate", "request_id": "offline-negotiate",
          "payload": {"supported_protocol_versions": ["1.0"]}},
@@ -100,10 +105,24 @@ def _headless_demo(python: Path, environment: dict[str, str]) -> None:
         {"protocol_version": "1.0", "type": "shutdown", "request_id": "offline-shutdown"},
     )
     payload = "".join(json.dumps(frame) + "\n" for frame in frames)
-    completed = subprocess.run(
-        [str(python), "-m", "networkclaw_harness.host"], input=payload,
-        text=True, capture_output=True, env=environment, check=True,
+    demo_environment = {
+        **environment,
+        "PYTHONPATH": os.pathsep.join((str(source / "src"), str(source / "vendor" / "hermes"))),
+    }
+    owner = (
+        "import os,sys,subprocess; "
+        "p=subprocess.Popen([sys.executable,'-m','networkclaw_harness.host','--parent-pid',str(os.getpid())]); "
+        "raise SystemExit(p.wait())"
     )
+    completed = subprocess.run(
+        [str(python), "-c", owner], input=payload,
+        text=True, capture_output=True, env=demo_environment,
+    )
+    if completed.returncode:
+        raise SystemExit(
+            "offline headless demonstration failed: "
+            f"exit={completed.returncode}; stderr={completed.stderr.strip()}"
+        )
     events = [json.loads(line) for line in completed.stdout.splitlines()]
     event_types = {event["type"] for event in events}
     required = {"protocol.negotiated", "health.status", "capabilities.report", "shutdown.completed"}
@@ -120,6 +139,7 @@ def _image_rebuild(source: Path, offline: Path, manifest: dict) -> None:
     base = offline / "base-image.oci.tar"
     if not base.is_file():
         raise SystemExit("offline package is missing its base image archive")
+    _populate_image_wheelhouse(source, offline / "wheelhouse")
     subprocess.run(["docker", "load", "--input", str(base)], check=True)
     tag = f"networkclaw-harness:{manifest['release_version']}-offline-rebuild"
     subprocess.run([
@@ -172,6 +192,29 @@ def _image_rebuild(source: Path, offline: Path, manifest: dict) -> None:
 
 def _epoch(value: str) -> int:
     return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+
+
+def _require_target_platform(manifest: dict) -> None:
+    """Fail early with a useful diagnostic when host Python cannot consume target wheels."""
+    target = manifest.get("target", "")
+    if target != "ubuntu-22.04-linux-amd64-cp312":
+        return
+    if sys.version_info[:2] != (3, 12):
+        raise SystemExit("offline acceptance requires CPython 3.12")
+    machine = platform.machine().lower()
+    if sys.platform != "linux" or machine not in {"x86_64", "amd64"}:
+        raise SystemExit(
+            "offline Python acceptance targets ubuntu-22.04-linux-amd64; "
+            f"current host is {sys.platform}/{machine}. Run this command on Linux amd64 "
+            "or execute the full acceptance inside the release image."
+        )
+
+
+def _populate_image_wheelhouse(source: Path, wheelhouse: Path) -> None:
+    image_wheelhouse = source / "offline" / "wheels"
+    image_wheelhouse.mkdir(parents=True, exist_ok=True)
+    for wheel in sorted(wheelhouse.glob("*.whl")):
+        shutil.copy2(wheel, image_wheelhouse / wheel.name)
 
 
 if __name__ == "__main__":

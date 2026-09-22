@@ -25,8 +25,18 @@ Hermes AIAgent
 The external platform owns placement, process supervision, tenant and user identity, session
 ownership, workspace allocation, execution epoch, lease renewal, failover and client transport.
 The Host Adapter translates that platform contract to JSONL protocol frames and translates bounded
-Harness events back to the platform. `HermesHostAdapter` owns the session-to-agent binding. The
+Harness events back to the platform. `HermesHostAdapter` owns the durable session binding and an
+evictable cache of agents. For each `session_id`, the external Host Adapter authoritatively maps the
+current owner and execution epoch to one explicit workspace, assigned Harness process and transport
+connection. It owns open/resume routing, controls, disconnect, drain, replacement and CAS fencing,
+and forwards the complete turn parameters and host grant. It never creates Python Agents or owns
+conversation, retry, plan/todo/iteration, delegation scheduling or transcript semantics. The
 vendored Hermes `AIAgent` owns the model/tool/plan/todo/subagent loop.
+
+CapacityLedger-style quota, fair scheduling and placement are platform responsibilities. The
+Harness accepts a bounded host grant (`session_id`, `execution_epoch`, workspace, turn budget,
+resource profile, allowed tools and lease), validates that it matches the opened binding, and
+enforces only local hard safety limits. It does not choose placement or implement tenant fairness.
 
 There is no NetworkClaw `CoordinatorLoop`, reference planner, deterministic production runtime or
 second planning engine. Tests may inject provider and agent doubles, but those doubles are not
@@ -69,10 +79,23 @@ agent loop.
 ## Session lifecycle
 
 The host sends `session.open` with tenant, user, session, absolute workspace root and lease. The
-adapter creates one Hermes runtime state for that session. A `user.input` starts one native Hermes
-turn. `turn.steer`, `turn.cancel`, `delegation.resolve` and lease updates are control-plane inputs;
-they never create a second loop. Closing or losing the host fences the session and releases the
-agent, tools and child resources.
+adapter creates one durable `SessionBinding` for that session. Each `user.input` acquires the
+session turn-admission gate, gets or creates an `AIAgent` cache entry, and calls Hermes'
+`run_conversation()` exactly once. Sequential turns may reuse that entry; eviction, restart, or a
+provider/route/tool/profile change only releases the agent and rebuilds it from the same
+SessionDB/workspace. `turn.steer`, `turn.cancel`, `delegation.resolve` and lease updates are
+control-plane inputs; they never create a second loop. Closing or losing the host fences the
+session, interrupts the native turn, and releases the binding and child resources.
+
+Only one turn may be active for a session. Admission uses session/turn/generation and the current
+execution epoch; it does not hold a lock while Hermes performs model or tool work. Session identity,
+transcript, workspace and todo facts remain durable even when the cached agent is gone.
+
+A delegated child never shares the parent's session identity, workspace, SessionDB or cached
+`AIAgent`. The host allocates a distinct child session and records explicit parent/child lineage;
+the Harness binds that grant to an independent `SessionBinding` before Hermes creates the child
+agent. Parent and child state may interact only through the bounded delegation request/result
+contract.
 
 The Harness may host multiple isolated sessions in one process when the external platform assigns
 them to that process. A session is never inferred from cwd, process-global state or user text.

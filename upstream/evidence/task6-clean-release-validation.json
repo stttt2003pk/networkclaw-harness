@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "validation_mode": "ephemeral-clean-snapshot",
+  "note": "The snapshot commits are validation-only commits created from the two current worktrees; they are not claimed as commits on either user's branch.",
+  "release_version": "0.1.0",
+  "target": "ubuntu-22.04-linux-amd64-cp312",
+  "publishable": true,
+  "repositories": {
+    "networkclaw": {
+      "commit": "a94c15aa902240a2ceb05f52d0ba7e2fb7d130e1",
+      "dirty": false
+    },
+    "networkclaw_harness": {
+      "commit": "f416dc849f470294e40e04a6f31e7bfd181d3afc",
+      "dirty": false
+    }
+  },
+  "hermes_source_commit": "6005aa1fd9aac8b1024ace50fec8cd1c85a04bae",
+  "image": {
+    "platform": "linux/amd64",
+    "digest": "sha256:3cf57bbc235f99497f8ce3d35a75ff5bdc8b93c77d9581daa680c9bb884c73a0",
+    "config_digest": "sha256:8a08ac7e5fc171380e13ee72e0b0438199a54fa99a258fce6fa445aa624d850a",
+    "archive_sha256": "ffbc8dfa7208adf12298d644b76d7b9bcd35060a1311fe9014004c6f1e242b69"
+  },
+  "verification": {
+    "offline_verifier": "passed with --require-publishable",
+    "linux_amd64_offline_acceptance": "236 passed, 4 skipped",
+    "network": "disabled",
+    "vendor": "verified 770 vendored files",
+    "runtime_closure": "imports=ok offline=ok globals=ok"
+  }
+}

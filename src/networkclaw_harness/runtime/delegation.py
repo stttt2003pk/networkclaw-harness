@@ -25,6 +25,9 @@ class DelegationGrant:
     max_iterations: int
     timeout_seconds: float
     max_output_bytes: int
+    parent_session_id: str
+    parent_turn_id: str | None = None
+    parent_generation: int = 0
 
     def hermes_mapping(self) -> dict[str, Any]:
         return {
@@ -35,6 +38,12 @@ class DelegationGrant:
             "max_iterations": self.max_iterations,
             "timeout_seconds": self.timeout_seconds,
             "max_output_bytes": self.max_output_bytes,
+            "lineage": {
+                "parent_session_id": self.parent_session_id,
+                "parent_turn_id": self.parent_turn_id,
+                "parent_generation": self.parent_generation,
+                "child_session_id": self.child_session_id,
+            },
         }
 
 
@@ -44,6 +53,8 @@ class _PendingAllocation:
     event: threading.Event = field(default_factory=threading.Event)
     grant: DelegationGrant | None = None
     error: DelegationError | None = None
+    parent_turn_id: str | None = None
+    parent_generation: int = 0
 
 
 class HostDelegationBroker:
@@ -59,9 +70,11 @@ class HostDelegationBroker:
         self._closed = False
 
     def request(self, *, task_index: int, task_count: int, depth: int,
-                requested_iterations: int) -> DelegationGrant:
+                requested_iterations: int, parent_turn_id: str | None = None,
+                parent_generation: int = 0) -> DelegationGrant:
         allocation_id = f"allocation-{uuid.uuid4().hex}"
-        pending = _PendingAllocation(allocation_id)
+        pending = _PendingAllocation(allocation_id, parent_turn_id=parent_turn_id,
+                                      parent_generation=max(0, int(parent_generation)))
         with self._lock:
             if self._closed:
                 raise DelegationError("delegation_broker_closed", "delegation broker is closed")
@@ -73,6 +86,8 @@ class HostDelegationBroker:
             "task_count": task_count,
             "depth": depth,
             "requested_budget": {"max_iterations": max(1, requested_iterations)},
+            "parent_turn_id": str(parent_turn_id or "")[:160],
+            "parent_generation": max(0, int(parent_generation)),
         })
         deadline = time.monotonic() + self._timeout_seconds
         try:
@@ -124,6 +139,9 @@ class HostDelegationBroker:
             max_iterations=_bounded_int(budget.get("max_iterations"), "max_iterations", 1, 64),
             timeout_seconds=float(_bounded_int(budget.get("timeout_seconds"), "timeout_seconds", 1, 3600)),
             max_output_bytes=_bounded_int(budget.get("max_output_bytes"), "max_output_bytes", 256, 1_048_576),
+            parent_session_id=self._session_id,
+            parent_turn_id=pending.parent_turn_id,
+            parent_generation=pending.parent_generation,
         )
         pending.grant = grant
         pending.event.set()

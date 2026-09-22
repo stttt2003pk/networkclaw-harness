@@ -1,4 +1,8 @@
-"""Fair per-session run scheduling with an independent priority control path."""
+"""Test/injected per-session admission fixture, not a production platform scheduler.
+
+Production routing and placement belong to the external host.  This module remains
+available for behavioral tests that need to model bounded per-session admission.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ class ScheduledInput:
 
 
 class FairSessionScheduler:
+    """Behavioral fixture for local admission tests; never selected by the launcher."""
     def __init__(self, *, max_active_runs: int, max_queued_per_session: int = 128) -> None:
         if max_active_runs <= 0 or max_queued_per_session <= 0:
             raise ValueError("scheduler limits must be positive")

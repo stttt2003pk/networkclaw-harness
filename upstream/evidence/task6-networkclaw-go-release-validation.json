@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "validation_mode": "ephemeral-clean-snapshot",
+  "note": "Validation-only snapshot copied from the current NetworkClaw worktree; the snapshot commit is not claimed as the user's branch history.",
+  "target": "linux/amd64",
+  "commit": "a94c15aa902240a2ceb05f52d0ba7e2fb7d130e1",
+  "binaries": {
+    "lobby": "241c087c661ff1035d9e6a40093eb8898c1a8322c2bbb8833114b1bd51b5faf5",
+    "chatrtmgr": "663f23b87830a96705266443a14a75810dc542040b7c4b43849407a5256bf1d5",
+    "chatsvc": "97d80eafdf8f8ae2aa1df31298595c288eeaadb0bbbf664470ce9bf986b67b2e"
+  },
+  "build": "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-coordinator",
+  "tests": {
+    "go_test_all": "passed",
+    "go_race_harness_session": "passed",
+    "harnessinterop": "passed"
+  }
+}

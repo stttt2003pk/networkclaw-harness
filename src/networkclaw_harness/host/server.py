@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 import threading
@@ -37,21 +38,24 @@ class OpenSession:
     execution_epoch: int
     lease: Mapping[str, Any]
     execution_state: str = "active"
+    host_grant: Mapping[str, Any] | None = None
 
 
 @dataclass(slots=True)
 class RequestRecord:
-    canonical: str
+    request_hash: str
     frames: tuple[dict[str, Any], ...]
 
 
 class HostRuntimePort(Protocol):
     def open(self, *, session_id: str, tenant_id: str, user_id: str,
              workspace: SessionWorkspace,
-             lease: Mapping[str, Any]) -> None: ...
+             lease: Mapping[str, Any],
+             host_grant: Mapping[str, Any] | None = None) -> None: ...
     def close(self, session_id: str) -> None: ...
     def handle(self, frame: InputFrame) -> Sequence[tuple[str, Mapping[str, Any]]]: ...
     def host_disconnected(self, session_ids: Sequence[str]) -> None: ...
+    def fence(self, session_id: str, reason: str = "lease_lost") -> None: ...
 
 
 class JsonlHost:
@@ -115,12 +119,14 @@ class JsonlHost:
             if not isinstance(raw, dict):
                 raise ProtocolError("invalid_frame", "input frame must be a JSON object")
             frame = InputFrame.from_mapping(raw)
-            canonical = json.dumps(frame.canonical_mapping(), sort_keys=True, separators=(",", ":"))
+            canonical = hashlib.sha256(json.dumps(
+                frame.canonical_mapping(), sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")).hexdigest()
             with self._request_lock:
                 known = self._requests.get(frame.request_id)
                 active_canonical = self._active_requests.get(frame.request_id)
             if known is not None:
-                if known.canonical != canonical:
+                if known.request_hash != canonical:
                     self._emit_error(frame.request_id, "request_id_conflict", "request_id was already used with a different command", frame)
                 else:
                     self._write_many(known.frames)
@@ -175,6 +181,7 @@ class JsonlHost:
             "session.open": self._open_session,
             "session.resume": self._open_session,
             "session.close": self._close_session,
+            "session.drain": self._drain_session,
             "session.lease.update": self._lease_update,
             "user.input": self._user_input,
             "turn.steer": self._control,
@@ -203,6 +210,8 @@ class JsonlHost:
         self._write_many(frames)
 
         def emit(event_type: str, payload: Mapping[str, Any]) -> None:
+            if len(frames) >= MAX_PENDING_FRAMES:
+                raise ProtocolError("backpressure", "stream response buffer is full")
             self._record_event_metrics(event_type, payload)
             event = self._frame(event_type, frame, payload, len(frames) + 1)
             frames.append(event)
@@ -213,9 +222,10 @@ class JsonlHost:
             if event_type in {"turn.started", "plan.updated"}:
                 continue
             emit(event_type, payload)
-        end = self._frame("end", frame, {"status": "completed"}, len(frames) + 1, end=True)
-        frames.append(end)
-        self._write_many((end,))
+        if not any(item["type"] in {"turn.completed", "turn.failed", "turn.cancelled"} for item in frames):
+            end = self._frame("end", frame, {"status": "completed"}, len(frames) + 1, end=True)
+            frames.append(end)
+            self._write_many((end,))
         return frames
 
     def _start_streaming(self, frame: InputFrame, canonical: str) -> None:
@@ -322,19 +332,43 @@ class JsonlHost:
         if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
             raise ProtocolError("invalid_request", "payload.execution_epoch must be a positive integer")
         self._validate_lease(lease)
+        host_grant = self._validate_host_grant(frame.payload, frame.session_id, epoch, workspace_root)
         assert frame.session_id is not None and frame.tenant_id is not None and frame.user_id is not None
         if lease["session_id"] != frame.session_id or lease["owner_id"] != owner_id or lease["execution_epoch"] != epoch:
             raise ProtocolError("invalid_request", "payload.lease identity must match session, owner, and execution epoch")
         existing = self._sessions.get(frame.session_id)
         if existing and (existing.tenant_id != frame.tenant_id or existing.user_id != frame.user_id):
             raise ProtocolError("session_identity_mismatch", "session is already associated with another tenant or user")
+        if existing is not None:
+            if existing.workspace.root != Path(workspace_root).resolve():
+                raise ProtocolError("session_identity_conflict", "session workspace does not match its existing binding")
+            if epoch < existing.execution_epoch:
+                raise ProtocolError("stale_epoch", "session open carries an older execution epoch")
+            if epoch == existing.execution_epoch:
+                if owner_id != existing.owner_id or lease["lease_id"] != existing.lease["lease_id"]:
+                    raise ProtocolError("session_owned", "session is already owned by another execution lease")
+                return self._response(frame, [("session.opened", {
+                    "workspace_root": str(existing.workspace.root),
+                    "owner_id": existing.owner_id,
+                    "execution_epoch": existing.execution_epoch,
+                })])
+            # A strictly newer epoch is an explicit platform takeover. Fence and
+            # release the old runtime before admitting the replacement binding.
+            fencer = getattr(self._runtime, "fence", None) if self._runtime is not None else None
+            if fencer is not None:
+                fencer(frame.session_id, "execution_epoch_takeover")
+            closer = getattr(self._runtime, "close", None) if self._runtime is not None else None
+            if closer is not None:
+                closer(frame.session_id)
+            self._sessions.pop(frame.session_id, None)
         workspace = SessionWorkspace.open(Path(workspace_root), tenant_id=frame.tenant_id, session_id=frame.session_id)
-        opened = OpenSession(workspace, frame.tenant_id, frame.user_id, owner_id, epoch, lease)
+        opened = OpenSession(workspace, frame.tenant_id, frame.user_id, owner_id, epoch, lease,
+                             host_grant=host_grant)
         opener = getattr(self._runtime, "open", None) if self._runtime is not None else None
         if opener is not None:
             try:
                 opener(session_id=frame.session_id, tenant_id=frame.tenant_id, user_id=frame.user_id,
-                       workspace=workspace, lease=lease)
+                       workspace=workspace, lease=lease, host_grant=host_grant)
             except Exception as error:
                 LOGGER.error("runtime session open failed: %s", type(error).__name__)
                 raise ProtocolError("runtime_open_failed", "runtime could not open the assigned session") from error
@@ -343,8 +377,16 @@ class JsonlHost:
         return self._response(frame, [("session.opened", {"workspace_root": str(workspace.root), "owner_id": owner_id, "execution_epoch": epoch})])
 
     def _close_session(self, frame: InputFrame) -> list[dict[str, Any]]:
-        self._require_open_session(frame)
+        session = self._require_session_identity(frame)
         assert frame.session_id is not None
+        # Close is the final lifecycle edge.  Fence/interrupt the native runtime
+        # first, then give the corresponding streaming worker a bounded window to
+        # publish its terminal outcome before the session binding is removed.  This
+        # keeps ``drain -> close`` meaningful: close cannot silently orphan a late
+        # native callback while still allowing a wedged provider to fail closed.
+        session.execution_state = "draining"
+        self._fence_runtime(frame.session_id, "session_closed")
+        self._wait_for_session_worker(frame.session_id, timeout=10.0)
         self._sessions.pop(frame.session_id, None)
         closer = getattr(self._runtime, "close", None) if self._runtime is not None else None
         if closer is not None:
@@ -352,36 +394,92 @@ class JsonlHost:
         self._metrics.gauge("active_sessions", len(self._sessions))
         return self._response(frame, [("session.closed", {})])
 
+    def _drain_session(self, frame: InputFrame) -> list[dict[str, Any]]:
+        session = self._require_session_identity(frame)
+        assert frame.session_id is not None
+        if session.execution_state == "active":
+            session.execution_state = "draining"
+        return self._response(frame, [("session.draining", {
+            "execution_epoch": session.execution_epoch,
+            "active_turn": self._has_worker(frame.session_id),
+        })])
+
     def _lease_update(self, frame: InputFrame) -> list[dict[str, Any]]:
         session = self._require_open_session(frame)
+        operation = frame.payload.get("operation", "renew")
+        if not isinstance(operation, str) or operation not in {"renew", "replace", "revoke", "takeover"}:
+            raise ProtocolError("lease_operation_invalid", "payload.operation must be renew, replace, revoke, or takeover")
+        if operation == "revoke":
+            reason_code = frame.payload.get("reason_code", "platform_lease_lost")
+            if not isinstance(reason_code, str) or reason_code not in {
+                "platform_lease_lost", "epoch_takeover", "session_closed", "harness_shutdown",
+            }:
+                raise ProtocolError("lease_operation_invalid", "revoke reason_code is not supported")
+            session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, reason_code)
+            return self._response(frame, [("session.lease.revoked", {
+                "reason_code": reason_code, "lease_id": session.lease["lease_id"],
+                "lease_version": session.lease["lease_version"],
+            })])
         if frame.payload.get("renewal_succeeded") is False:
             session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, "platform_lease_lost")
             raise ProtocolError("lease_lost", "lease renewal failed; session is fenced")
         lease = frame.payload.get("lease")
         self._validate_lease(lease)
         assert frame.session_id is not None
         current = session.lease
+        if operation in {"replace", "takeover"}:
+            if frame.payload.get("replacement_admitted") is not True:
+                raise ProtocolError("lease_replacement_not_admitted", "replacement requires explicit admission")
+            if lease["execution_epoch"] <= current["execution_epoch"]:
+                raise ProtocolError("stale_epoch", "replacement epoch must be newer than the current epoch")
+            reason_code = "epoch_takeover" if operation == "takeover" else "platform_lease_lost"
+            session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, reason_code)
+            session.owner_id = lease["owner_id"]
+            session.execution_epoch = lease["execution_epoch"]
+            session.lease = lease
+            session.execution_state = "active"
+            updater = getattr(self._runtime, "update_lease", None) if self._runtime is not None else None
+            if updater is not None:
+                updater(frame.session_id, lease)
+            event_type = "session.lease.takeover" if operation == "takeover" else "session.lease.replaced"
+            return self._response(frame, [(event_type, {
+                "owner_id": lease["owner_id"], "execution_epoch": lease["execution_epoch"],
+                "lease_id": lease["lease_id"], "lease_version": lease["lease_version"],
+                "reason_code": reason_code,
+            })])
         identity = ("session_id", "owner_id", "execution_epoch", "lease_id")
         if any(lease[name] != current[name] for name in identity):
             session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, "platform_lease_lost")
             raise ProtocolError("lease_lost", "lease update changed session ownership identity")
         policy = ("ttl_ms", "renew_interval_ms", "grace_ms")
         if any(lease[name] != current[name] for name in policy):
             session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, "platform_lease_lost")
             raise ProtocolError("lease_lost", "lease policy changed during renewal")
         if lease["lease_version"] != current["lease_version"] + 1:
             session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, "platform_lease_lost")
             raise ProtocolError("lease_lost", "lease renewal version did not increase by exactly one")
         current_expires = datetime.fromisoformat(current["expires_at"].replace("Z", "+00:00"))
         renewed_expires = datetime.fromisoformat(lease["expires_at"].replace("Z", "+00:00"))
         if renewed_expires <= current_expires:
             session.execution_state = "fenced"
+            self._fence_runtime(frame.session_id, "platform_lease_lost")
             raise ProtocolError("lease_lost", "lease renewal did not extend the expiry window")
         session.lease = lease
         updater = getattr(self._runtime, "update_lease", None) if self._runtime is not None else None
         if updater is not None:
             updater(frame.session_id, lease)
         return self._response(frame, [("session.lease.updated", {"lease_id": lease["lease_id"], "lease_version": lease["lease_version"]})])
+
+    def _fence_runtime(self, session_id: str | None, reason_code: str) -> None:
+        fencer = getattr(self._runtime, "fence", None) if self._runtime is not None else None
+        if fencer is not None and session_id is not None:
+            fencer(session_id, reason_code)
 
     def _user_input(self, frame: InputFrame) -> list[dict[str, Any]]:
         self._require_open_session(frame)
@@ -404,12 +502,19 @@ class JsonlHost:
             return self._response(frame, list(self._runtime.handle(frame)))
         return self._response(frame, [
             ("turn.queued", {"reason": "runtime_not_ready", "queue_position": position, "priority": "normal"}),
-            ("turn.failed", {"code": "runtime_unavailable", "message": "Hermes runtime snapshot and adapter have not passed H0 validation", "retryable": False}),
+            ("turn.failed", {"code": "runtime_unavailable", "reason_code": "runtime_unavailable", "message": "Hermes runtime snapshot and adapter have not passed H0 validation", "retryable": False}),
         ])
 
     def _control(self, frame: InputFrame) -> list[dict[str, Any]]:
-        self._require_open_session(frame)
+        session = self._require_control_session(frame)
         assert frame.session_id is not None
+        expected_epoch = frame.payload.get("execution_epoch")
+        if expected_epoch is not None and expected_epoch != session.execution_epoch:
+            raise ProtocolError("stale_epoch", "control frame execution_epoch is stale")
+        if frame.type in {"turn.cancel", "turn.steer"}:
+            target_turn_id = frame.payload.get("target_turn_id")
+            if target_turn_id is not None and target_turn_id != frame.turn_id:
+                raise ProtocolError("stale_request", "control target_turn_id does not match frame turn_id")
         with self._scheduler_lock:
             self._scheduler.submit(ScheduledCommand(frame.session_id, frame.request_id, frame), control=True)
             admitted = self._scheduler.next()
@@ -419,6 +524,12 @@ class JsonlHost:
         return self._response(frame, [("turn.controlled", {"command": frame.type, "state": "runtime_unavailable", "priority": "control"})])
 
     def _shutdown(self, frame: InputFrame) -> list[dict[str, Any]]:
+        # Shutdown is an explicit lifecycle fence. Active native turns must
+        # receive the stable shutdown reason before workers are drained.
+        for session_id, session in tuple(self._sessions.items()):
+            if self._has_worker(session_id):
+                session.execution_state = "fenced"
+                self._fence_runtime(session_id, "harness_shutdown")
         self._wait_for_workers(timeout=10.0)
         self._stopping = True
         return self._response(frame, [("shutdown.completed", {})])
@@ -436,19 +547,50 @@ class JsonlHost:
             for worker in workers:
                 worker.join(timeout=min(remaining, 0.1))
 
+    def _wait_for_session_worker(self, session_id: str, *, timeout: float) -> None:
+        """Wait only for one session's stream worker, without blocking other sessions."""
+        deadline = datetime.now().timestamp() + timeout
+        while True:
+            with self._worker_lock:
+                worker = self._turn_workers.get(session_id)
+            if worker is None or not worker.is_alive():
+                return
+            remaining = deadline - datetime.now().timestamp()
+            if remaining <= 0:
+                LOGGER.warning("session close timed out waiting for active turn: %s", session_id)
+                return
+            worker.join(timeout=min(remaining, 0.1))
+
     def _has_workers(self) -> bool:
         with self._worker_lock:
             return any(worker.is_alive() for worker in self._turn_workers.values())
 
+    def _has_worker(self, session_id: str | None) -> bool:
+        if session_id is None:
+            return False
+        with self._worker_lock:
+            worker = self._turn_workers.get(session_id)
+            return worker is not None and worker.is_alive()
+
     def _require_open_session(self, frame: InputFrame) -> OpenSession:
+        session = self._require_session_identity(frame)
+        if session.execution_state != "active":
+            raise ProtocolError("lease_lost", "session is fenced and cannot accept new actions")
+        return session
+
+    def _require_control_session(self, frame: InputFrame) -> OpenSession:
+        session = self._require_session_identity(frame)
+        if session.execution_state == "fenced":
+            raise ProtocolError("lease_lost", "session is fenced and cannot accept control")
+        return session
+
+    def _require_session_identity(self, frame: InputFrame) -> OpenSession:
         assert frame.session_id is not None and frame.tenant_id is not None and frame.user_id is not None
         session = self._sessions.get(frame.session_id)
         if session is None:
             raise ProtocolError("session_not_open", "session must be opened before this command")
         if session.tenant_id != frame.tenant_id or session.user_id != frame.user_id:
             raise ProtocolError("session_identity_mismatch", "session tenant or user does not match")
-        if session.execution_state != "active":
-            raise ProtocolError("lease_lost", "session is fenced and cannot accept new actions")
         return session
 
     @staticmethod
@@ -482,12 +624,48 @@ class JsonlHost:
                 milliseconds(grace_expires_at - expires_at) != lease["grace_ms"]):
             raise ProtocolError("invalid_request", "lease timestamps do not match its immutable policy")
 
+    @staticmethod
+    def _validate_host_grant(payload: Mapping[str, Any], session_id: str,
+                             execution_epoch: int, workspace_root: str) -> Mapping[str, Any] | None:
+        """Validate platform-owned resource grants without scheduling or placing sessions."""
+        grant = payload.get("host_grant")
+        if grant is None:
+            return None
+        if not isinstance(grant, Mapping):
+            raise ProtocolError("invalid_request", "payload.host_grant must be an object")
+        if grant.get("session_id") != session_id or grant.get("execution_epoch") != execution_epoch:
+            raise ProtocolError("invalid_request", "host_grant identity does not match session")
+        if grant.get("workspace") not in {workspace_root, str(Path(workspace_root).resolve())}:
+            raise ProtocolError("invalid_request", "host_grant workspace does not match assigned workspace")
+        budget = grant.get("turn_budget")
+        if not isinstance(budget, Mapping):
+            raise ProtocolError("invalid_request", "host_grant.turn_budget is required")
+        for field in ("max_steps", "max_retries", "max_actions", "timeout_seconds"):
+            value = budget.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0 or value > 1_000_000:
+                raise ProtocolError("invalid_request", f"host_grant.turn_budget.{field} is invalid")
+        profile = grant.get("resource_profile")
+        if not isinstance(profile, (str, Mapping)):
+            raise ProtocolError("invalid_request", "host_grant.resource_profile is invalid")
+        allowed = grant.get("allowed_tools")
+        if not isinstance(allowed, list) or len(allowed) > 256 or any(
+                not isinstance(item, str) or not item or not item.isascii() or len(item) > 128
+                for item in allowed):
+            raise ProtocolError("invalid_request", "host_grant.allowed_tools is invalid")
+        return {
+            "session_id": session_id, "execution_epoch": execution_epoch,
+            "workspace": str(Path(workspace_root).resolve()),
+            "turn_budget": dict(budget), "resource_profile": profile,
+            "allowed_tools": tuple(allowed),
+        }
+
     def _response(self, frame: InputFrame, events: list[tuple[str, Mapping[str, Any]]]) -> list[dict[str, Any]]:
         for event_type, payload in events:
             self._record_event_metrics(event_type, payload)
         result = [self._frame("request.accepted", frame, {"command": frame.type}, 1)]
         result.extend(self._frame(event_type, frame, payload, index + 2) for index, (event_type, payload) in enumerate(events))
-        result.append(self._frame("end", frame, {"status": "completed"}, len(result) + 1, end=True))
+        if not any(item["type"] in {"turn.completed", "turn.failed", "turn.cancelled"} for item in result):
+            result.append(self._frame("end", frame, {"status": "completed"}, len(result) + 1, end=True))
         return result
 
     def _record_event_metrics(self, event_type: str, payload: Mapping[str, Any]) -> None:
@@ -536,8 +714,27 @@ class JsonlHost:
             payload={"code": code, "message": message}, end=True,
         )
 
-    @staticmethod
-    def _frame(event_type: str, source: InputFrame, payload: Mapping[str, Any], sequence: int, *, end: bool = False) -> dict[str, Any]:
+    def _frame(self, event_type: str, source: InputFrame, payload: Mapping[str, Any], sequence: int, *, end: bool = False) -> dict[str, Any]:
+        normalized = dict(payload)
+        if event_type in {"turn.completed", "turn.failed", "turn.cancelled"}:
+            outcome = {
+                "turn.completed": "completed",
+                "turn.failed": "failed",
+                "turn.cancelled": "cancelled",
+            }[event_type]
+            normalized.setdefault("outcome", outcome)
+            normalized.setdefault("end", True)
+            if event_type == "turn.completed":
+                normalized.setdefault("reason_code", "")
+            elif event_type == "turn.cancelled":
+                normalized.setdefault("reason_code", "user_cancel")
+            else:
+                normalized.setdefault("reason_code", normalized.get("code", "provider_interrupted"))
+            session = self._sessions.get(source.session_id) if source.session_id else None
+            if session is not None:
+                normalized.setdefault("execution_epoch", session.execution_epoch)
+            normalized.setdefault("generation", int(normalized.get("generation", 0) or 0))
+        terminal = event_type in {"turn.completed", "turn.failed", "turn.cancelled"}
         return event_frame(event_type, sequence=sequence, request_id=source.request_id,
                            tenant_id=source.tenant_id, user_id=source.user_id,
                            session_id=source.session_id, turn_id=source.turn_id,
@@ -545,7 +742,7 @@ class JsonlHost:
                            event_id=source.event_id, invocation_id=source.invocation_id,
                            parent_item_id=source.parent_item_id, interaction_id=source.interaction_id,
                            artifact_id=source.artifact_id, cursor=source.cursor,
-                           metadata=source.metadata, payload=payload, end=end)
+                           metadata=source.metadata, payload=normalized, end=end or terminal)
 
     def _write_many(self, frames: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> None:
         with self._write_lock:

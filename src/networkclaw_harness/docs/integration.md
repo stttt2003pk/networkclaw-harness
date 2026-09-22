@@ -1,18 +1,42 @@
 # External Platform Integration
 
-An integrating platform should implement the following thin Host Adapter responsibilities:
+## Go Host Adapter boundary
 
-1. Allocate a session workspace and issue tenant/user/session identity, owner, epoch and lease.
-2. Start and supervise the Harness process, negotiate protocol v1 and route JSONL frames.
-3. Deliver user input and versioned controls without interpreting model prose.
-4. Resolve `delegation.requested` by allocating child workspace, identity and budget, then send
-   `delegation.resolve`.
-5. Persist or relay public events and map them to the platform's client protocol.
-6. Renew leases, fence stale owners, stop dead processes and perform takeover with a newer epoch.
-7. Keep provider credentials in the platform secret/config boundary.
+An integrating service such as `chatsvc` implements a thin Go Host Adapter. For every assigned
+session it owns the authoritative routing chain:
 
-The platform must not create a planner, parse assistant output to decide tools, duplicate todo state,
-or create child Agents directly. Child creation is a Hermes operation after Host allocation.
+```text
+session_id
+  -> session owner
+  -> execution epoch
+  -> absolute workspace
+  -> assigned Harness process and child PID
+  -> transport connection
+```
+
+That binding is platform state, not Python Agent state. The Go adapter must:
+
+1. Allocate or resolve the session workspace and issue tenant/user/session identity, owner, epoch
+   and lease before sending `session.open` or `session.resume`.
+2. Start and supervise the assigned Harness process, negotiate Host Protocol v1, and forward JSONL
+   frames without interpreting model prose.
+3. Route `user.input`, `turn.cancel`, `turn.steer`, lease updates and public event frames through the
+   connection selected by the current session owner and execution epoch.
+4. Forward all turn parameters and the complete bounded host grant to the Python Host Adapter.
+5. Enforce platform CAS/fencing so one session cannot be executed by two owners; stale processes,
+   connections and epochs must not route inputs or publish accepted events.
+6. Own disconnect cleanup, drain, process replacement and child-PID lifecycle. Replacement may
+   resume only with a newer valid epoch and lease against the same explicitly assigned workspace.
+7. Resolve `delegation.requested` by allocating a distinct child session, workspace, identity,
+   lease and budget, then send `delegation.resolve`.
+8. Persist or relay bounded public events, map them to the client protocol, and keep provider
+   credentials in the platform secret/config boundary.
+
+The Go adapter must not create or cache Python `AIAgent` objects, implement the Hermes conversation
+loop, retry model or tool execution, own plan/todo/iteration state, schedule Hermes delegation, or
+act as the source of truth for the session transcript. Those responsibilities remain in
+`HermesHostAdapter`, the session-owned stores and Hermes `AIAgent`. Child creation is a Hermes
+operation only after host allocation.
 
 ## Minimal integration test
 

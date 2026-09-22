@@ -77,6 +77,8 @@ def main() -> int:
         path.relative_to(args.vendor).as_posix(): sha256(path)
         for path in sorted(args.vendor.rglob("*"))
         if path.is_file() and path.name != ".gitkeep"
+        and "__pycache__" not in path.relative_to(args.vendor).parts
+        and path.suffix not in {".pyc", ".pyo"}
     }
     if actual != expected:
         missing = sorted(set(expected) - set(actual))

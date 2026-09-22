@@ -37,7 +37,9 @@ def session_command(kind: str, request_id: str, session_id: str = "session-1", *
     return command(kind, request_id, **identity)
 
 
-def lease(session_id: str = "session-1", *, version: int = 1):
+def lease(session_id: str = "session-1", *, version: int = 1,
+          owner_id: str = "owner-1", execution_epoch: int = 1,
+          lease_id: str = "lease-1"):
     if version == 1:
         issued_at, renew_by = "2026-09-17T00:00:00Z", "2026-09-17T00:00:30Z"
         expires_at, grace_expires_at = "2026-09-17T00:01:00Z", "2026-09-17T00:01:10Z"
@@ -45,10 +47,10 @@ def lease(session_id: str = "session-1", *, version: int = 1):
         issued_at, renew_by = "2026-09-17T00:00:20Z", "2026-09-17T00:00:50Z"
         expires_at, grace_expires_at = "2026-09-17T00:01:20Z", "2026-09-17T00:01:30Z"
     return {
-        "session_id": session_id, "owner_id": "owner-1", "lease_id": "lease-1",
+        "session_id": session_id, "owner_id": owner_id, "lease_id": lease_id,
         "issued_at": issued_at, "expires_at": expires_at,
         "renew_by": renew_by, "grace_expires_at": grace_expires_at,
-        "lease_version": version, "execution_epoch": 1,
+        "lease_version": version, "execution_epoch": execution_epoch,
         "ttl_ms": 60000, "renew_interval_ms": 30000, "grace_ms": 10000,
     }
 
@@ -82,9 +84,15 @@ def test_request_stream_sequences_restart_and_end(tmp_path: Path):
     streams = {request_id: [event for event in events if event["request_id"] == request_id] for request_id in {"req-open", "req-turn", "req-stop"}}
     for stream in streams.values():
         assert [event["sequence"] for event in stream] == list(range(1, len(stream) + 1))
-        assert stream[-1]["type"] == "end"
+        assert stream[-1]["type"] in {"end", "turn.completed", "turn.failed", "turn.cancelled"}
         assert stream[-1]["end"] is True
-    assert [event["type"] for event in streams["req-turn"]] == ["request.accepted", "turn.queued", "turn.failed", "end"]
+    assert [event["type"] for event in streams["req-turn"]] == ["request.accepted", "turn.queued", "turn.failed"]
+    terminal = next(event for event in streams["req-turn"] if event["type"] == "turn.failed")
+    assert terminal["payload"]["outcome"] == "failed"
+    assert terminal["payload"]["reason_code"] == "runtime_unavailable"
+    assert terminal["payload"]["end"] is True
+    assert terminal["payload"]["execution_epoch"] == 1
+    assert terminal["payload"]["generation"] == 0
 
 
 def test_duplicate_request_replays_and_conflicting_request_fails(tmp_path: Path):
@@ -96,6 +104,134 @@ def test_duplicate_request_replays_and_conflicting_request_fails(tmp_path: Path)
     assert events[-1]["type"] == "error"
     assert events[-1]["payload"]["code"] == "request_id_conflict"
     assert events[-1]["sequence"] == 1
+
+
+def test_duplicate_turn_replays_terminal_without_executing_runtime_twice(tmp_path: Path):
+    class Runtime:
+        def __init__(self):
+            self.calls = 0
+        def open(self, **kwargs):
+            pass
+        def handle(self, frame):
+            self.calls += 1
+            return (("turn.completed", {"status": "completed", "generation": 1}),)
+        def host_disconnected(self, session_ids):
+            pass
+
+    runtime = Runtime()
+    turn = session_command("user.input", "same-request", turn_id="turn-1", run_id="run-1",
+                           payload={"text": "hello"})
+    conflict = session_command("user.input", "same-request", turn_id="turn-1", run_id="run-1",
+                               payload={"text": "different"})
+    _, events = run_host([open_command(tmp_path / "session"), turn, turn, conflict], runtime=runtime)
+    assert runtime.calls == 1
+    terminals = [event for event in events if event["request_id"] == "same-request"
+                 and event["type"] == "turn.completed"]
+    assert len(terminals) == 2
+    assert terminals[0] == terminals[1]
+    assert events[-1]["type"] == "error"
+    assert events[-1]["payload"]["code"] == "request_id_conflict"
+
+
+def test_open_rejects_second_owner_for_active_session(tmp_path: Path):
+    first = open_command(tmp_path / "session-1")
+    second = open_command(tmp_path / "session-1", "req-second")
+    second["payload"]["owner_id"] = "owner-2"
+    second["payload"]["lease"] = lease(owner_id="owner-2", lease_id="lease-2")
+    _, events = run_host([first, second])
+    error = next(event for event in events if event["request_id"] == "req-second")
+    assert error["payload"]["code"] == "session_owned"
+
+
+def test_newer_epoch_takes_over_after_fencing_old_binding(tmp_path: Path):
+    class Runtime:
+        def __init__(self):
+            self.fenced = []
+            self.closed = []
+        def open(self, **kwargs):
+            pass
+        def fence(self, session_id, reason="lease_lost"):
+            self.fenced.append((session_id, reason))
+        def close(self, session_id):
+            self.closed.append(session_id)
+        def host_disconnected(self, session_ids):
+            pass
+
+    runtime = Runtime()
+    first = open_command(tmp_path / "session-1")
+    takeover = open_command(tmp_path / "session-1", "req-takeover")
+    takeover["payload"]["owner_id"] = "owner-2"
+    takeover["payload"]["execution_epoch"] = 2
+    takeover["payload"]["lease"] = lease(owner_id="owner-2", lease_id="lease-2", execution_epoch=2)
+    _, events = run_host([first, takeover], runtime=runtime)
+    opened = next(event for event in events if event["request_id"] == "req-takeover" and event["type"] == "session.opened")
+    assert opened["payload"]["execution_epoch"] == 2
+    assert runtime.fenced == [("session-1", "execution_epoch_takeover")]
+    assert runtime.closed == ["session-1"]
+
+
+def test_session_close_fences_and_waits_for_active_turn(tmp_path: Path):
+    class Runtime:
+        def __init__(self):
+            self.fenced = []
+            self.closed = []
+            self.released = threading.Event()
+
+        def open(self, **kwargs):
+            pass
+
+        def fence(self, session_id, reason="lease_lost"):
+            self.fenced.append((session_id, reason))
+            self.released.set()
+
+        def handle_stream(self, frame, emit):
+            self.released.wait(2)
+            emit("turn.cancelled", {"reason_code": "session_closed"})
+            return []
+
+        def close(self, session_id):
+            self.closed.append(session_id)
+
+        def host_disconnected(self, session_ids):
+            pass
+
+    runtime = Runtime()
+    frames = [
+        open_command(tmp_path / "session-1"),
+        session_command("user.input", "req-turn", turn_id="turn-1", payload={"text": "hello"}),
+        session_command("session.close", "req-close"),
+    ]
+    code, events = run_host(frames, runtime=runtime)
+    assert code == 0
+    assert runtime.fenced == [("session-1", "session_closed")]
+    assert runtime.closed == ["session-1"]
+    turn = [event for event in events if event["request_id"] == "req-turn"]
+    assert any(event["type"] == "turn.cancelled" for event in turn)
+    assert any(event["type"] == "session.closed" for event in events if event["request_id"] == "req-close")
+
+
+def test_host_grant_is_validated_without_owning_placement(tmp_path: Path):
+    opened = open_command(tmp_path / "session-1")
+    opened["payload"]["host_grant"] = {
+        "session_id": "session-1", "execution_epoch": 1,
+        "workspace": str((tmp_path / "session-1").resolve()),
+        "turn_budget": {"max_steps": 8, "max_retries": 2, "max_actions": 8, "timeout_seconds": 30},
+        "resource_profile": "customer", "allowed_tools": ["networkclaw_workspace_read"],
+    }
+    _, events = run_host([opened, command("shutdown", "stop")])
+    assert any(event["type"] == "session.opened" for event in events)
+
+
+def test_host_grant_rejects_invalid_budget(tmp_path: Path):
+    opened = open_command(tmp_path / "session-1")
+    opened["payload"]["host_grant"] = {
+        "session_id": "session-1", "execution_epoch": 1,
+        "workspace": str(tmp_path / "session-1"), "turn_budget": {},
+        "resource_profile": "customer", "allowed_tools": [],
+    }
+    _, events = run_host([opened])
+    assert events[0]["type"] == "error"
+    assert events[0]["payload"]["code"] == "invalid_request"
 
 
 def test_rejected_request_is_deduplicated_and_conflicting_retry_fails():
@@ -222,12 +358,16 @@ def test_valid_lease_update_is_propagated_to_runtime(tmp_path: Path):
         def __init__(self):
             self.opened = None
             self.updated = None
+            self.fenced = []
 
         def open(self, **kwargs):
             self.opened = kwargs
 
         def update_lease(self, session_id, value):
             self.updated = (session_id, value)
+
+        def fence(self, session_id, reason="lease_lost"):
+            self.fenced.append((session_id, reason))
 
         def close(self, session_id):
             pass
@@ -246,8 +386,77 @@ def test_valid_lease_update_is_propagated_to_runtime(tmp_path: Path):
     ], runtime=runtime)
     assert runtime.opened["user_id"] == "user-1"
     assert runtime.updated == ("session-1", lease(version=2))
+    assert runtime.fenced == []
     assert any(event["request_id"] == "lease-update" and event["type"] == "session.lease.updated"
                for event in events)
+
+
+def test_lease_revoke_fences_with_platform_reason_code(tmp_path: Path):
+    class Runtime:
+        def __init__(self):
+            self.fenced = []
+        def open(self, **kwargs): pass
+        def close(self, session_id): pass
+        def host_disconnected(self, session_ids): pass
+        def fence(self, session_id, reason="lease_lost"):
+            self.fenced.append((session_id, reason))
+
+    runtime = Runtime()
+    _, events = run_host([
+        open_command(tmp_path / "s"),
+        session_command("session.lease.update", "revoke", payload={
+            "operation": "revoke", "reason_code": "platform_lease_lost",
+        }),
+    ], runtime=runtime)
+    revoked = [event for event in events if event["request_id"] == "revoke"]
+    assert any(event["type"] == "session.lease.revoked" for event in revoked)
+    assert runtime.fenced == [("session-1", "platform_lease_lost")]
+
+
+def test_lease_takeover_requires_explicit_admission_and_new_epoch(tmp_path: Path):
+    replacement = lease(owner_id="owner-2", lease_id="lease-2", execution_epoch=2)
+    _, rejected = run_host([
+        open_command(tmp_path / "s"),
+        session_command("session.lease.update", "replace-rejected", payload={
+            "operation": "takeover", "lease": replacement,
+        }),
+    ])
+    error = next(event for event in rejected if event["request_id"] == "replace-rejected")
+    assert error["payload"]["code"] == "lease_replacement_not_admitted"
+
+    class Runtime:
+        def __init__(self):
+            self.fenced = []
+            self.updated = []
+        def open(self, **kwargs): pass
+        def close(self, session_id): pass
+        def host_disconnected(self, session_ids): pass
+        def fence(self, session_id, reason="lease_lost"):
+            self.fenced.append((session_id, reason))
+        def update_lease(self, session_id, value):
+            self.updated.append((session_id, value))
+
+    runtime = Runtime()
+    _, accepted = run_host([
+        open_command(tmp_path / "s"),
+        session_command("session.lease.update", "takeover", payload={
+            "operation": "takeover", "replacement_admitted": True, "lease": replacement,
+        }),
+    ], runtime=runtime)
+    assert any(event["request_id"] == "takeover" and event["type"] == "session.lease.takeover" for event in accepted)
+    assert runtime.fenced == [("session-1", "epoch_takeover")]
+    assert runtime.updated and runtime.updated[0][1]["execution_epoch"] == 2
+
+
+def test_control_rejects_stale_execution_epoch(tmp_path: Path):
+    _, events = run_host([
+        open_command(tmp_path / "s"),
+        session_command("turn.cancel", "stale-control", turn_id="turn-1", payload={
+            "execution_epoch": 2, "reason_code": "user_cancel",
+        }),
+    ])
+    error = next(event for event in events if event["request_id"] == "stale-control")
+    assert error["payload"]["code"] == "stale_epoch"
 
 
 def test_runtime_open_failure_does_not_admit_session(tmp_path: Path):
@@ -271,15 +480,25 @@ def test_runtime_open_failure_does_not_admit_session(tmp_path: Path):
 
 
 def test_failed_lease_renewal_fences_session_actions(tmp_path: Path):
+    class Runtime:
+        def __init__(self):
+            self.fenced = []
+        def open(self, **kwargs): pass
+        def close(self, session_id): pass
+        def host_disconnected(self, session_ids): pass
+        def fence(self, session_id, reason="lease_lost"):
+            self.fenced.append((session_id, reason))
+    runtime = Runtime()
     _, events = run_host([
         open_command(tmp_path / "s"),
         session_command("session.lease.update", "lease-failed", payload={"renewal_succeeded": False}),
         session_command("turn.cancel", "after-fence", turn_id="turn-1", payload={}),
-    ])
+    ], runtime=runtime)
     failed = [event for event in events if event["request_id"] == "lease-failed"]
     fenced = [event for event in events if event["request_id"] == "after-fence"]
     assert failed[-1]["payload"]["code"] == "lease_lost"
     assert fenced[-1]["payload"]["code"] == "lease_lost"
+    assert runtime.fenced == [("session-1", "platform_lease_lost")]
 
 
 def test_skipped_lease_version_fails_closed(tmp_path: Path):
