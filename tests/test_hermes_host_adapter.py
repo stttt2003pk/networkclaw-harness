@@ -1,12 +1,15 @@
 import json
 import threading
 import time
+import pytest
 from dataclasses import replace
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from networkclaw_harness.protocol import InputFrame
-from networkclaw_harness.runtime.hermes_host_adapter import HermesHostAdapter, _failure_reason_code
+from networkclaw_harness.runtime.hermes_host_adapter import (
+    HermesHostAdapter, HermesHostAdapterError, _failure_reason_code, _validated_turn_parameters, _run_native_turn,
+)
 from networkclaw_harness.workspace import SessionWorkspace
 
 
@@ -141,12 +144,110 @@ def test_native_adapter_streams_one_vertical_turn(tmp_path: Path):
     assert agent.run_calls == 1
     assert agent.kwargs["cwd"] == str(runtimes[0].workspace.root)
     assert agent.kwargs["session_db"] is runtimes[0].session_db
-    assert agent.kwargs["enabled_toolsets"] == ["networkclaw", "todo", "delegation"]
+    assert agent.kwargs["enabled_toolsets"] == ["networkclaw", "todo", "delegation", "clarify"]
     assert agent.suppress_status_output is True
 
     adapter.close("session")
     assert agent.closed is True
     assert runtimes[0].closed is True
+
+
+def test_native_callbacks_keep_hermes_names_and_gate_restricted_events(tmp_path: Path):
+    class EventAgent(FakeNativeAgent):
+        def run_conversation(self, text):
+            self.kwargs["tool_progress_callback"](
+                "subagent.start", "delegate_task", "inspect", None,
+                subagent_id="child-a", parent_id="parent", task_index=0, task_count=1,
+                allocation_id="allocation-1",
+            )
+            self.kwargs["tool_progress_callback"]("subagent.text", "", "found files", None,
+                                                    subagent_id="child-a")
+            self.kwargs["tool_progress_callback"]("tool.progress", "search", "2 files", None,
+                                                    invocation_id="invocation-1")
+            self.kwargs["tool_gen_callback"]("search")
+            self.kwargs["reasoning_callback"]("private reasoning")
+            self.kwargs["event_callback"]("moa.progress", {"refs_done": 1, "refs_total": 2})
+            return {
+                "completed": True, "failed": False, "interrupted": False,
+                "final_response": "done", "api_calls": 1,
+                "provider_attempt": 2, "context_compacted": True,
+                "checkpoint": {"status": "updated", "checkpoint_id": "cp-1"},
+                "usage": {"input_tokens": 10, "output_tokens": 4, "reasoning_tokens": 2},
+                "provider_metadata": {"status": "completed"},
+            }
+
+    adapter, _ = _adapter(tmp_path)
+    adapter._agent_factory = EventAgent
+    events = []
+    adapter.handle_stream(_frame(), lambda kind, payload: events.append((kind, payload)))
+    kinds = [kind for kind, _ in events]
+    assert "subagent.start" in kinds
+    assert "subagent.text" in kinds
+    assert "tool.progress" in kinds
+    assert "tool.generating" in kinds
+    assert "provider.attempt" in kinds and "provider.retry" not in kinds
+    assert "context.continued" in kinds
+    assert "checkpoint.updated" in kinds
+    assert "warning" in kinds  # reasoning, MoA, and usage are restricted by default
+    assert "reasoning.delta" not in kinds
+    assert "usage.updated" not in kinds
+    assert "moa.progress" not in kinds
+    assert next(payload for kind, payload in events if kind == "subagent.start")["subagent_id"] == "child-a"
+    adapter.close("session")
+
+
+def test_native_compaction_status_is_safe_generation_bound_and_not_duplicated(tmp_path: Path):
+    from networkclaw_harness.runtime.hermes_native_probe import load_agent_class
+    load_agent_class()
+    from agent.conversation_compression import COMPACTION_STATUS, COMPACTION_HEARTBEAT_STATUS
+
+    class CompactingAgent(FakeNativeAgent):
+        def run_conversation(self, text):
+            callback = self.status_callback
+            callback("lifecycle", "provider secret unrelated to compaction")
+            callback("lifecycle", COMPACTION_STATUS)
+            callback("lifecycle", COMPACTION_HEARTBEAT_STATUS)
+            callback("compacted", "private summary must never reach clients")
+            self.previous_callback = callback
+            return {"completed": True, "context_compacted": True}
+
+    adapter, _ = _adapter(tmp_path)
+    adapter._agent_factory = CompactingAgent
+    events = []
+    adapter.handle_stream(_frame(), lambda kind, payload: events.append((kind, payload)))
+    context = [(kind, payload) for kind, payload in events if kind.startswith("context.")]
+    assert [kind for kind, _ in context] == ["context.started", "context.continued"]
+    assert [payload["version"] for _, payload in context] == [1, 1]
+    assert "private" not in json.dumps(events) and "secret" not in json.dumps(events)
+    state = adapter._sessions["session"]
+    old_callback = state.agent.previous_callback
+    state.bridge.begin(lambda kind, payload: events.append((kind, payload)), generation=2)
+    count = len(events)
+    old_callback("compacted", "late result")
+    assert len(events) == count
+    adapter.close("session")
+
+
+def test_restricted_event_capabilities_allow_reasoning_usage_and_moa(tmp_path: Path):
+    class EventAgent(FakeNativeAgent):
+        def run_conversation(self, text):
+            self.kwargs["reasoning_callback"]("bounded reasoning")
+            self.kwargs["event_callback"]("moa.progress", {"refs_done": 1, "refs_total": 1})
+            return {"completed": True, "failed": False, "interrupted": False,
+                    "final_response": "done", "usage": {"input_tokens": 1, "output_tokens": 1}}
+
+    adapter, _ = _adapter(tmp_path)
+    adapter._agent_factory = EventAgent
+    state = adapter._sessions["session"]
+    state.host_grant = {"event_capabilities": ("reasoning.delta", "usage.updated", "moa.events")}
+    events = []
+    adapter.handle_stream(_frame(), lambda kind, payload: events.append((kind, payload)))
+    kinds = [kind for kind, _ in events]
+    assert "reasoning.delta" in kinds
+    assert "moa.progress" in kinds
+    assert "usage.updated" in kinds
+    assert "reasoning_event_restricted" not in {payload.get("code") for kind, payload in events if kind == "warning"}
+    adapter.close("session")
 
 
 def test_turn_parameters_are_passed_to_native_facade_and_restored(tmp_path: Path):
@@ -182,6 +283,32 @@ def test_turn_parameters_are_passed_to_native_facade_and_restored(tmp_path: Path
     assert agent.turn_kwargs == {"system_message": "be concise", "turn_author": {"id": "user"}, "relay_metadata": {"source": "gateway"}}
     assert agent.reasoning_seen["effort"] == "high"
     assert agent.tools_seen == [] or agent.tools_seen == ["networkclaw"]
+
+
+def test_native_turn_reads_session_history_again_after_agent_rebuild():
+    class Database:
+        def __init__(self):
+            self.calls = []
+            self.history = [{"role": "user", "content": "prior turn", "_row_id": 1}]
+
+        def get_messages_as_conversation(self, session_id, **kwargs):
+            self.calls.append((session_id, kwargs))
+            return list(self.history)
+
+    class Agent:
+        session_id = "hermes-session"
+
+        def __init__(self, database):
+            self._session_db = database
+
+        def run_conversation(self, text, conversation_history=None):
+            return {"messages": conversation_history}
+
+    database = Database()
+    assert _run_native_turn(Agent(database), "next", {})["messages"] == database.history
+    database.history.append({"role": "assistant", "content": "prior answer", "_row_id": 2})
+    assert _run_native_turn(Agent(database), "after rebuild", {})["messages"] == database.history
+    assert database.calls == [("hermes-session", {"repair_alternation": True, "include_row_ids": True})] * 2
 
 
 def test_turn_parameters_reject_tools_outside_host_grant(tmp_path: Path):
@@ -459,6 +586,79 @@ def test_host_grant_tool_and_profile_signatures_select_cache_entry(tmp_path: Pat
     adapter.handle(_frame())
     assert adapter.cache_entry("session").route[-2:] == ("networkclaw", '{"tier":"standard"}')
     adapter.close("session")
+
+
+@pytest.mark.parametrize("change", ["agent", "profile", "tools", "budget", "resource_profile"])
+def test_configuration_refresh_replaces_only_target_agent(tmp_path: Path, change: str):
+    adapter, runtimes = _adapter(tmp_path)
+    workspace = SessionWorkspace.open(tmp_path / "other", tenant_id="tenant", session_id="other")
+    adapter.open(session_id="other", tenant_id="tenant", user_id="user", workspace=workspace,
+                 lease={**_lease(), "session_id": "other"})
+    adapter.handle(_frame())
+    adapter.handle(replace(_frame(), session_id="other"))
+    first = adapter.cache_entry("session").agent
+    other = adapter.cache_entry("other").agent
+    state = adapter._sessions["session"]
+    resources = (state.runtime, state.tool_session, state.bridge, state.admission)
+    grant = {
+        "session_id": "session", "execution_epoch": 1, "workspace": str(state.workspace.root),
+        "turn_budget": {"max_steps": 3, "max_retries": 1, "max_actions": 2, "timeout_seconds": 20},
+        "allowed_tools": ["networkclaw"], "resource_profile": {"tier": "standard"},
+    }
+    config = {"agent_id": "agent-a", "profile_id": "profile-a", "host_grant": grant}
+    adapter.configure_session("session", **config)
+    adapter.handle(_frame())
+    cached = adapter.cache_entry("session").agent
+    adapter.configure_session("session", **config)
+    assert adapter.cache_entry("session").agent is cached
+    if change == "agent":
+        config["agent_id"] = "agent-b"
+    elif change == "profile":
+        config["profile_id"] = "profile-b"
+    elif change == "tools":
+        config["host_grant"] = {**grant, "allowed_tools": ["todo"]}
+    elif change == "budget":
+        config["host_grant"] = {**grant, "turn_budget": {**grant["turn_budget"], "max_steps": 4}}
+    else:
+        config["host_grant"] = {**grant, "resource_profile": {"tier": "large"}}
+    adapter.configure_session("session", **config)
+    adapter.handle(_frame())
+    rebuilt = adapter.cache_entry("session").agent
+    assert first.closed and cached.closed
+    assert rebuilt is not cached
+    if change == "budget":
+        assert rebuilt.kwargs["max_iterations"] == 4
+    assert adapter.cache_entry("other").agent is other and not other.closed
+    assert resources == (state.runtime, state.tool_session, state.bridge, state.admission)
+    assert not any(runtime.closed for runtime in runtimes)
+    adapter.close("session")
+    adapter.close("other")
+
+
+def test_configuration_refresh_rejects_active_or_fenced_session(tmp_path: Path):
+    adapter, _ = _adapter(tmp_path)
+    state = adapter._sessions["session"]
+    state.active_turn_id = "turn"
+    with pytest.raises(HermesHostAdapterError) as active:
+        adapter.configure_session("session", agent_id="different")
+    assert active.value.code == "turn_already_active"
+    assert state.agent_id == ""
+    state.active_turn_id = None
+    adapter.fence("session")
+    with pytest.raises(HermesHostAdapterError) as fenced:
+        adapter.configure_session("session", agent_id="different")
+    assert fenced.value.code == "stale_epoch"
+    adapter.close("session")
+
+
+def test_turn_uses_granted_tools_when_request_omits_tool_selection():
+    grant = {"allowed_tools": ["networkclaw"]}
+    assert _validated_turn_parameters({}, grant)["allowed_tools"] == ("networkclaw",)
+    assert _validated_turn_parameters({}, {"allowed_tools": ("networkclaw",)})["allowed_tools"] == ("networkclaw",)
+    assert _validated_turn_parameters({"allowed_tools": []}, grant)["allowed_tools"] == ()
+    with pytest.raises(HermesHostAdapterError) as denied:
+        _validated_turn_parameters({"allowed_tools": ["delegation"]}, grant)
+    assert denied.value.code == "allowed_tools_exceed_grant"
 
 
 def test_native_delegation_binds_independent_child_resources_and_releases_them(tmp_path: Path):

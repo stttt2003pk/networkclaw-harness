@@ -15,13 +15,14 @@ SESSION_COMMANDS = frozenset(
         "user.input",
         "turn.steer",
         "turn.cancel",
+        "run.query",
         "delegation.resolve",
         "clarification.answer",
         "approval.resolve",
     }
 )
 CONTROL_COMMANDS = frozenset(
-    {"session.lease.update", "turn.steer", "turn.cancel", "delegation.resolve", "clarification.answer", "approval.resolve"}
+    {"session.lease.update", "turn.steer", "turn.cancel", "run.query", "delegation.resolve", "clarification.answer", "approval.resolve"}
 )
 COMMANDS = PROCESS_COMMANDS | SESSION_COMMANDS
 
@@ -65,6 +66,35 @@ EVENTS = frozenset(
         "shutdown.completed",
     }
 )
+
+# Hermes-native process events are additive to the frozen v1 baseline. Keep
+# ``EVENTS`` stable for callers that consume the original 36-event contract;
+# capabilities advertise the complete canonical vocabulary.
+PROCESS_EXTENSIONS = frozenset(
+    {
+        "subagent.start",
+        "subagent.complete",
+        "subagent.text",
+        "subagent.thinking",
+        "subagent_progress",
+        "delegation.resolved",
+        "tool.generating",
+        "reasoning.delta",
+        "context.started",
+        "context.continued",
+        "provider.attempt",
+        "provider.retry",
+        "usage.updated",
+        "checkpoint.updated",
+        "moa.reference",
+        "moa.progress",
+        "moa.phase",
+        "moa.aggregating",
+        "grace.summary",
+        "finalizer.fallback",
+    }
+)
+ALL_EVENTS = EVENTS | PROCESS_EXTENSIONS
 
 # New optional fields and event types are compatible additions. A peer must reject
 # unknown commands that can alter execution or authorization.

@@ -1,6 +1,6 @@
 {
   "allowlist": "upstream/hermes-runtime-files.txt",
-  "allowlist_sha256": "ba8797eed2d17fc899d8c4e5c0f595067d81b95516bb40ab07d51cc6a0449f09",
+  "allowlist_sha256": "e5a2cd5e1a14ec64199baef18c1d6b28e31d0ac98d725285d0be8d22b6523b85",
   "capability_manifest": {
     "path": "upstream/hermes-runtime-capabilities.json",
     "sha256": "de8391982eb76cef5af5058d3d920677be29645fc708a0d4312675cf9c97f12a"
@@ -20,6 +20,7 @@
     "agent/aux_accounting.py": "73fe49e1a8bd5f3cfb18e7cbab25e68998a52b2f04249d5dc505e6708aac8d7e",
     "agent/auxiliary_client.py": "8ba27f177851fec9af5eac871c249aae851f967545df6146db9bdeb859ef9a5d",
     "agent/auxiliary_health.py": "3ecb4d6c2590dc527b07f01314fe26d1b39c3e9f6536747f21f67d3f2da556bd",
+    "agent/auxiliary_wire.py": "9e43dbd82506784753667fed0cc6c6810957b696d00c2d8676c66b9031f94dca",
     "agent/backend_identity.py": "1444a415d2039624b11ed30f15785dcb44e91d94fb0ab41cbeb204375f4d0f65",
     "agent/background_review.py": "17551ad59cb5aa2d0a0da260de96eef3790fec786a6d0b8043ac8e8eb29d8651",
     "agent/bedrock_adapter.py": "40c047ecb7b7875076f50204ba845872b6a84b3e789818e05cd9ffa0957358a9",
@@ -80,6 +81,7 @@
     "agent/moonshot_schema.py": "7c83943e1e7c50018e59759009b4a9393f86ce2f71791db0c06d02c86cc292e0",
     "agent/native_compaction.py": "70931de6262444d82e646ec0a09ff1b32a81f7cf4ee7100f0f6920c620f31c4d",
     "agent/opencode_affinity.py": "6228025ffffb1b0f5d0d51482028b9de19378e0b193a8d9bb5f99396f5cccf97",
+    "agent/periodic_scheduler.py": "dd929ecf6ee0275772b60912c9637e27749d065fc11a7af5785465c8b6041bb7",
     "agent/plugin_stream_hooks.py": "f8dc9ecf89c60c0009b2398a03c40c3b0256489941974a5cc822fa1eaf7bb2eb",
     "agent/portal_tags.py": "c2d753dc38a290d69225df9bbb1134f1b83418050e35688faa79cd865ad68f13",
     "agent/process_bootstrap.py": "660b79126385961c787dc1b7654cf5a6310f678d735004792c0e8c70b6554f93",
@@ -136,7 +138,7 @@
     "agent/thinking_timeout_guidance.py": "db3eab387a24670f1007137f1528523e0d10c21245b767ad1f4487b93d553ac3",
     "agent/thread_scoped_output.py": "600e9688365257c44d89c4f9f9c89b6d7c7aa87c4228b651936542e11af70b52",
     "agent/tool_dispatch_helpers.py": "773765ad340b7d707c2159b81076461db1aa3e3dab24bc60e0ccdac0d7b7ad9b",
-    "agent/tool_executor.py": "6fd1534a7089bcf5dfe473a93d9303d21f9b818d3350802159cae38103a8cd2a",
+    "agent/tool_executor.py": "425951e92cfe0368e3cb919d286232e33f4590687dfaf9043d86eb1451f40f87",
     "agent/tool_guardrails.py": "5f912a36db0414eb289f4e35a805702d58ff16126ff298a209a7d9b64680ab06",
     "agent/tool_result_classification.py": "186cf924dcc689abc6847584aa3acfd6d0d01104f3a76b30886cea6f1f8b9ab2",
     "agent/trajectory.py": "209d8e5c723f19f425c7daf5fa10ba828a5b84fd17b2f577746f4a720b867c91",
@@ -163,6 +165,7 @@
     "agent/turn_final_response.py": "ea0c33e64260d9f85494837979c30e36fce0c32c5785222dfe171314f456bd74",
     "agent/turn_finalizer.py": "e411120eb990983f6a5d7133426dc29bf1b24217ec0de4280ccf378fc158007f",
     "agent/turn_iteration_prep.py": "9e0061dc174e696423353c65b5aec315b22dbeafeb0c5c8eb446a983a55741be",
+    "agent/turn_liveness.py": "116291ac96af89016bbf1af2b30ded064015304f4821d5cb4e985ce4dab1ac85",
     "agent/turn_loop_errors.py": "1a7af1b9b401a1802193c55b74b73e4b9bb8b2432cb0ffe93069e92d3545cd99",
     "agent/turn_overflow.py": "a2c90246fff9fa60a854f45aa6d428359c79099f4cec248c668a8366770f3fb1",
     "agent/turn_preflight.py": "5d2b451ee640029e1543dc3f3d056f83fa09da37a6dfbc66341dc82fcecb32a1",
@@ -478,7 +481,7 @@
     "providers/__init__.py": "cfd7702e3e7095aad1c7dcabac86be00e7113e3c0cf5036b49a03856ed4438c4",
     "providers/base.py": "eb4700b6a4a827993664ed38d99d8a74d730ef30f68d7d31f0d62d72afb68315",
     "registration_lifecycle.py": "98efbd89a8b76534f56c123ddb597c5b8e8f9ca0e840d7493582e2eeb74acb47",
-    "run_agent.py": "ed003dbfb458bb7e08215dcdd03a47d65c89e80ed2fe23177692f0df142f393e",
+    "run_agent.py": "dd381f94a28d9a4183a446c98699c911f6ece0cd85b9cea308e426caec38d26d",
     "tools/__init__.py": "7bca460f476ac9ace706c8cfd07e98f8aae34d839862f0f68abafc3a8397cf35",
     "tools/annotate_preview_tool.py": "8db74019d61368f6c8ff37bb6f9b1dce0d5b1c4174e691eb7f5e57d683a2d612",
     "tools/ansi_strip.py": "71f339d1be720c24f407565b4a90cb55164dead2e860cf438258104fd96c1922",
@@ -777,16 +780,24 @@
     "toolsets.py": "7fa869260df75942a5b43d208a1c6bd39d880379652aecf03022b7c1856276c3",
     "utils.py": "a9df1b33981ee6935696ab58b3bf4c12723d8431ed62aae6a55ae7bfabeba0f0"
   },
-  "generated_at": "2026-09-21T00:30:28.458692Z",
+  "generated_at": "2026-09-27T09:06:08.090563Z",
   "license": {
     "path": "vendor/hermes/LICENSE",
     "sha256": "821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6"
   },
-  "patch_series_sha256": "88e5132fd23dec937eb27e0266cf71f1065d8447ddb82dfdd91c783871f8951a",
+  "patch_series_sha256": "5dae6bf598d30893bab68706390505257ad82d227562918db060ffce032533f2",
   "patches": [
     {
       "name": "0001-host-controlled-delegation.patch",
       "sha256": "a1c107031300b77fd15577bd578884d83e3c43ae1b3e7c676460368b5431f50d"
+    },
+    {
+      "name": "0002-host-controlled-foreground-dispatch.patch",
+      "sha256": "8db8a951b29c412a6c9138c5636363d344529e685ba727ddf610ac134b0ea61c"
+    },
+    {
+      "name": "0003-tool-progress-callback.patch",
+      "sha256": "81f1cb1afc941adc968363a9c779362fe18f203fffb88d63b2f49421d31e76cd"
     }
   ],
   "sbom": {

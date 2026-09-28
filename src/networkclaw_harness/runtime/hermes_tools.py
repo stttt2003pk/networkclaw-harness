@@ -141,7 +141,8 @@ class _ToolAudit:
 
     def intent(self, request: PolicyRequest, decision: Any) -> None:
         self._delegate.intent(request, decision)
-        self._bridge.publish("tool.started", {
+        publish = getattr(self._bridge, "publish_tool", self._bridge.publish)
+        publish("tool.started", {
             "tool_name": request.tool_name,
             "invocation_id": request.invocation_id,
             "policy_id": request.policy_id,
@@ -157,7 +158,8 @@ class _ToolAudit:
             }
         self._delegate.result(request, replace(result, output=metadata, preview=None))
         self.completed = True
-        self._bridge.publish("tool.completed", {
+        publish = getattr(self._bridge, "publish_tool", self._bridge.publish)
+        publish("tool.completed", {
             "tool_name": result.tool_name,
             "invocation_id": request.invocation_id,
             "status": str(result.status),
@@ -165,6 +167,13 @@ class _ToolAudit:
             "retryable": result.retryable,
             **({"artifact_id": result.artifact_id} if result.artifact_id else {}),
         })
+        if result.artifact_id:
+            self._bridge.publish("artifact.created", {
+                "artifact_id": str(result.artifact_id)[:160],
+                "status": "created",
+                "tool_name": result.tool_name,
+                "summary": result.summary,
+            })
 
 
 class HermesHostToolSession:
@@ -244,7 +253,8 @@ class HermesHostToolSession:
         except (EpochError, PolicyError, ToolExecutionError, ToolRegistryError, WorkspaceError) as error:
             code = str(getattr(error, "code", "tool_failed"))
             if not audit.completed:
-                self.bridge.publish("tool.completed", {
+                publish = getattr(self.bridge, "publish_tool", self.bridge.publish)
+                publish("tool.completed", {
                     "tool_name": TOOL_NAME, "invocation_id": invocation_id,
                     "status": "failed", "error_code": code, "retryable": False,
                 })
@@ -252,7 +262,8 @@ class HermesHostToolSession:
         except Exception as error:
             LOGGER.exception("NetworkClaw workspace tool failed: %s", type(error).__name__)
             if not audit.completed:
-                self.bridge.publish("tool.completed", {
+                publish = getattr(self.bridge, "publish_tool", self.bridge.publish)
+                publish("tool.completed", {
                     "tool_name": TOOL_NAME, "invocation_id": invocation_id,
                     "status": "failed", "error_code": "tool_failed", "retryable": False,
                 })

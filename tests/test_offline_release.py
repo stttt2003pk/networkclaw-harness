@@ -16,9 +16,10 @@ GIT_CHECKOUT = (ROOT / ".git").exists()
 
 
 @pytest.mark.skipif(not GIT_CHECKOUT, reason="release assembly requires a Git checkout")
-def test_publishable_release_requires_clean_tree_external_key_and_image():
+def test_publishable_release_requires_clean_tree_external_key_and_image(tmp_path: Path):
     completed = subprocess.run(
-        [sys.executable, str(BUILD), "--signing-key", "/missing/key.pem", "--image-digest", "sha256:test"],
+        [sys.executable, str(BUILD), "--output-root", str(tmp_path / "release"),
+         "--signing-key", "/missing/key.pem", "--image-digest", "sha256:test"],
         cwd=ROOT, capture_output=True, text=True,
     )
     assert completed.returncode != 0

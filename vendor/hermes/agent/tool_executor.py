@@ -968,6 +968,10 @@ def _begin_tool_execution(agent, ref: _ToolCallRef, display_index: int | None) -
             logging.debug("Tool progress callback error: %s", callback_error)
         else:
             _safe_callback(agent.tool_progress_callback, "Tool progress", "tool.started", function_name, preview, display_args)
+            _safe_callback(
+                agent.tool_progress_callback, "Tool progress", "tool.progress", function_name,
+                preview, display_args, status="running",
+            )
     _safe_callback(agent.tool_start_callback, "Tool start", tool_call_id, function_name, display_args)
 
     if not agent._checkpoint_mgr.enabled:

@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 
 from networkclaw_harness.host import JsonlHost
+from networkclaw_harness.protocol.catalog import ALL_EVENTS
 
 
 class FeedStream:
@@ -104,6 +105,48 @@ def test_duplicate_request_replays_and_conflicting_request_fails(tmp_path: Path)
     assert events[-1]["type"] == "error"
     assert events[-1]["payload"]["code"] == "request_id_conflict"
     assert events[-1]["sequence"] == 1
+
+
+def test_resume_refreshes_target_session_configuration(tmp_path: Path):
+    class Runtime:
+        def __init__(self):
+            self.opened = []
+            self.configured = []
+
+        def open(self, **kwargs):
+            self.opened.append(kwargs["session_id"])
+
+        def configure_session(self, session_id, **kwargs):
+            self.configured.append((session_id, kwargs))
+
+        def host_disconnected(self, session_ids):
+            pass
+
+    runtime = Runtime()
+    first = open_command(tmp_path / "first")
+    first["payload"].update(agent_id="agent-a", profile_id="profile-a")
+    other = open_command(tmp_path / "other", "open-other", "other")
+    resumed = open_command(tmp_path / "first", "resume")
+    resumed["type"] = "session.resume"
+    resumed["payload"].update(agent_id="agent-b", profile_id="profile-b")
+    _, events = run_host([first, other, resumed], runtime=runtime)
+    assert runtime.opened == ["session-1", "other"]
+    assert [session for session, _ in runtime.configured] == ["session-1", "other", "session-1"]
+    assert runtime.configured[-1][1]["agent_id"] == "agent-b"
+    assert runtime.configured[-1][1]["profile_id"] == "profile-b"
+    assert any(event["request_id"] == "resume" and event["type"] == "session.opened" for event in events)
+
+
+def test_reopen_requires_lease_update_and_cannot_unfence(tmp_path: Path):
+    opened = open_command(tmp_path / "session")
+    renewed = open_command(tmp_path / "session", "wrong-renew")
+    renewed["payload"]["lease"] = lease(version=2)
+    revoke = session_command("session.lease.update", "revoke", payload={"operation": "revoke"})
+    reopen = open_command(tmp_path / "session", "reopen")
+    _, events = run_host([opened, renewed, revoke, reopen])
+    errors = {event["request_id"]: event["payload"]["code"] for event in events if event["type"] == "error"}
+    assert errors["wrong-renew"] == "lease_update_required"
+    assert errors["reopen"] == "session_fenced"
 
 
 def test_duplicate_turn_replays_terminal_without_executing_runtime_twice(tmp_path: Path):
@@ -318,6 +361,9 @@ def test_version_handshake_and_capability_catalog():
     capabilities = next(event for event in events if event["type"] == "capabilities.report")
     assert negotiated["payload"]["protocol_version"] == "1.0"
     assert "approval.resolve" in capabilities["payload"]["commands"]
+    assert "subagent.start" in capabilities["payload"]["events"]
+    assert "usage.updated" in capabilities["payload"]["events"]
+    assert set(capabilities["payload"]["events"]) == ALL_EVENTS
     assert capabilities["payload"]["limits"]["max_frame_bytes"] == 65536
 
 
@@ -389,6 +435,21 @@ def test_valid_lease_update_is_propagated_to_runtime(tmp_path: Path):
     assert runtime.fenced == []
     assert any(event["request_id"] == "lease-update" and event["type"] == "session.lease.updated"
                for event in events)
+
+
+def test_lease_with_nanosecond_timestamps_keeps_exact_millisecond_policy(tmp_path: Path):
+    value = lease()
+    value.update({
+        "issued_at": "2026-09-17T00:00:00.123456789Z",
+        "renew_by": "2026-09-17T00:00:30.123456789Z",
+        "expires_at": "2026-09-17T00:01:00.123456789Z",
+        "grace_expires_at": "2026-09-17T00:01:10.123456789Z",
+    })
+    _, events = run_host([session_command("session.open", "open", payload={
+        "workspace_root": str(tmp_path / "s"), "owner_id": "owner-1", "execution_epoch": 1,
+        "lease": value,
+    })])
+    assert any(event["type"] == "session.opened" for event in events)
 
 
 def test_lease_revoke_fences_with_platform_reason_code(tmp_path: Path):

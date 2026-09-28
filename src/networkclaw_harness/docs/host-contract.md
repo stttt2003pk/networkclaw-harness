@@ -5,9 +5,16 @@ possible host; the contract does not grant it agent-loop ownership.
 
 ## Process transport
 
-The reference launcher uses stdin/stdout JSONL. stdout contains protocol frames only; diagnostics
-go to stderr. A host may later map the same semantics to UDS, gRPC or another transport without
-changing the Harness runtime boundary.
+The launcher accepts stdin/stdout JSONL by default. With `--socket-path /absolute/path.sock`, it
+listens on a Unix domain socket and exchanges the same newline-delimited Host Protocol frames.
+Each connection has its own `JsonlHost` session bindings; the owner must keep a session's commands
+on its connection. A second connection can query health while the first is active. On disconnect,
+that connection's sessions are fenced and their runtime bindings are released. `shutdown` closes
+the listener and active connections. The socket has mode `0600`, and the launcher removes it on
+normal shutdown or SIGTERM. An existing socket path is rejected rather than overwritten.
+
+In stdin/stdout mode, stdout contains protocol frames only. In UDS mode, stdout remains empty.
+Diagnostics go to stderr in both modes.
 
 Every request has `protocol_version`, `type`, `request_id` and a JSON `payload`. Session commands
 also carry explicit tenant, user and session identity. Turn controls carry the turn/run identity
@@ -38,6 +45,19 @@ reference and the process environment/secret manager resolves it.
 When supplied, `payload.host_grant` is validated as platform-owned admission metadata: it must bind
 the session, epoch and workspace and contain bounded turn budget, resource profile and allowed-tool
 fields. Validation does not perform placement, quota arbitration or fair scheduling.
+
+`session.open` and `session.resume` also accept bounded `agent_id` and `profile_id` configuration
+identifiers. They select a session-local Agent cache entry; they never select a process or share
+mutable Agents across sessions. Reopening the same epoch preserves workspace, runtime, tool session,
+turn admission and event bridge. Changed Agent/profile identifiers, host resource profile, tool grant
+or turn budget evict only that session's Agent. Provider route changes rebuild it on the next turn.
+Configuration changes during an active turn are rejected. Omitted configuration fields on resume
+retain the current configuration. Lease changes must use `session.lease.update`; same-epoch reopen
+cannot reactivate a drained or fenced session. If a turn omits its tool selection, the Host grant's
+allowed tools still apply.
+
+These identifiers are host-selected configuration identities, not a Harness-side Agent catalog.
+The host still supplies the resolved provider route and turn parameters.
 
 The host routes a session only through the Harness process and connection selected by its current
 owner and execution epoch. It forwards the complete turn parameters and host grant, and owns

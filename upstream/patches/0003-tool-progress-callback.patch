@@ -1,0 +1,19 @@
+From: NetworkClaw Harness <noreply@networkclaw.local>
+Subject: [PATCH] emit a running tool progress edge
+
+Upstream: NousResearch/hermes-agent@6005aa1fd9aac8b1024ace50fec8cd1c85a04bae
+Reason: The host event contract needs an explicit in-flight tool progress edge
+for process ledgers; Hermes already exposes the callback at tool start.
+Removal: Drop when upstream emits the canonical tool.progress callback.
+
+--- a/agent/tool_executor.py
++++ b/agent/tool_executor.py
+@@ -968,4 +968,8 @@
+             logging.debug("Tool progress callback error: %s", callback_error)
+         else:
+             _safe_callback(agent.tool_progress_callback, "Tool progress", "tool.started", function_name, preview, display_args)
++            _safe_callback(
++                agent.tool_progress_callback, "Tool progress", "tool.progress", function_name,
++                preview, display_args, status="running",
++            )
+     _safe_callback(agent.tool_start_callback, "Tool start", tool_call_id, function_name, display_args)

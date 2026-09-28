@@ -93,10 +93,22 @@ class HostDelegationBroker:
         try:
             while not pending.event.wait(timeout=min(0.1, max(0.0, deadline - time.monotonic()))):
                 if time.monotonic() >= deadline:
-                    raise DelegationError(
-                        "delegation_allocation_timeout",
-                        "host did not resolve the child allocation before the deadline",
-                    )
+                    with self._lock:
+                        if pending.event.is_set():
+                            continue
+                        self._pending.pop(allocation_id, None)
+                        self._emit("delegation.resolved", {
+                            "allocation_id": allocation_id,
+                            "decision": "deny",
+                            "reason": "delegation_allocation_timeout",
+                            "parent_session_id": self._session_id,
+                            "parent_turn_id": pending.parent_turn_id or "",
+                            "parent_generation": pending.parent_generation,
+                        })
+                        raise DelegationError(
+                            "delegation_allocation_timeout",
+                            "host did not resolve the child allocation before the deadline",
+                        )
             if pending.error is not None:
                 raise pending.error
             if pending.grant is None:
@@ -108,14 +120,26 @@ class HostDelegationBroker:
 
     def resolve(self, allocation_id: str, payload: Mapping[str, Any]) -> DelegationGrant | None:
         with self._lock:
-            pending = self._pending.get(allocation_id)
-        if pending is None:
+            return self._resolve_locked(allocation_id, payload)
+
+    def _resolve_locked(self, allocation_id: str, payload: Mapping[str, Any]) -> DelegationGrant | None:
+        pending = self._pending.get(allocation_id)
+        if pending is None or pending.event.is_set() or self._closed:
             raise DelegationError("delegation_allocation_not_found", "allocation is not pending")
         decision = str(payload.get("decision") or "").strip().lower()
         if decision == "deny":
+            reason = str(payload.get("reason") or "host denied child allocation")[:256]
             pending.error = DelegationError(
-                "delegation_denied", str(payload.get("reason") or "host denied child allocation")[:256],
+                "delegation_denied", reason,
             )
+            self._emit("delegation.resolved", {
+                "allocation_id": allocation_id,
+                "decision": "deny",
+                "reason": reason,
+                "parent_session_id": self._session_id,
+                "parent_turn_id": pending.parent_turn_id or "",
+                "parent_generation": pending.parent_generation,
+            })
             pending.event.set()
             return None
         if decision != "grant":
@@ -144,6 +168,20 @@ class HostDelegationBroker:
             parent_generation=pending.parent_generation,
         )
         pending.grant = grant
+        self._emit("delegation.resolved", {
+            "allocation_id": allocation_id,
+            "decision": "grant",
+            "child_session_id": grant.child_session_id,
+            "workspace_root": str(grant.workspace_root),
+            "budget": {
+                "max_iterations": grant.max_iterations,
+                "timeout_seconds": grant.timeout_seconds,
+                "max_output_bytes": grant.max_output_bytes,
+            },
+            "parent_session_id": grant.parent_session_id,
+            "parent_turn_id": grant.parent_turn_id or "",
+            "parent_generation": grant.parent_generation,
+        })
         pending.event.set()
         return grant
 

@@ -33,6 +33,8 @@ def test_host_must_grant_identity_workspace_and_budget_before_child_creation(tmp
     assert result[0].child_session_id == "child-1"
     assert result[0].max_iterations == 4
     assert result[0].workspace_root == (tmp_path / "child").resolve()
+    assert [kind for kind, _ in events] == ["delegation.requested", "delegation.resolved"]
+    assert events[1][1]["decision"] == "grant"
 
 
 def test_child_grant_carries_bounded_parent_lineage(tmp_path: Path):
@@ -99,3 +101,31 @@ def test_denied_delegation_fails_closed():
     broker.resolve(events[0][1]["allocation_id"], {"decision": "deny", "reason": "capacity"})
     worker.join(1)
     assert failure == ["delegation_denied"]
+    assert events[-1] == ("delegation.resolved", {
+        "allocation_id": events[0][1]["allocation_id"],
+        "decision": "deny",
+        "reason": "capacity",
+        "parent_session_id": "parent",
+        "parent_turn_id": "",
+        "parent_generation": 0,
+    })
+
+
+def test_allocation_timeout_emits_resolution_and_rejects_late_grant():
+    events = []
+    broker = HostDelegationBroker(session_id="parent", timeout_seconds=0.01,
+                                 emit=lambda kind, payload: events.append((kind, payload)))
+    with pytest.raises(DelegationError) as failure:
+        broker.request(task_index=0, task_count=1, depth=1, requested_iterations=4,
+                       parent_turn_id="turn-parent", parent_generation=3)
+    assert failure.value.code == "delegation_allocation_timeout"
+    assert [kind for kind, _ in events] == ["delegation.requested", "delegation.resolved"]
+    allocation = events[0][1]["allocation_id"]
+    assert events[1][1] == {
+        "allocation_id": allocation, "decision": "deny", "reason": "delegation_allocation_timeout",
+        "parent_session_id": "parent", "parent_turn_id": "turn-parent", "parent_generation": 3,
+    }
+    with pytest.raises(DelegationError) as late:
+        broker.resolve(allocation, {"decision": "grant"})
+    assert late.value.code == "delegation_allocation_not_found"
+    assert len(events) == 2

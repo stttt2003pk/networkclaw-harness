@@ -1,11 +1,11 @@
 {
     "schema_version": 1,
-    "commit": "9d74a5783df749d24646e62b6c4985b5a6e04984",
-    "indexed_at": "2026-09-18T15:03:03Z",
+    "commit": "5b3284a2a75db3d036e83fabf1d76955d419c395",
+    "indexed_at": "2026-09-28T06:24:18Z",
     "project": "Users-maxrocketman-myproject-networkclaw-harness",
-    "nodes": 11,
-    "edges": 10,
-    "original_size": 1769472,
-    "compressed_size": 12230,
+    "nodes": 2066,
+    "edges": 6053,
+    "original_size": 8912896,
+    "compressed_size": 1384237,
     "compression_level": 3
 }

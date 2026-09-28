@@ -9,6 +9,7 @@ agent/anthropic_message_convert.py
 agent/api_error_summary.py
 agent/api_request_hooks.py
 agent/auxiliary_client.py
+agent/auxiliary_wire.py
 agent/aux_accounting.py
 agent/auxiliary_health.py
 agent/background_review.py
@@ -71,6 +72,7 @@ agent/moa_loop.py
 agent/moonshot_schema.py
 agent/native_compaction.py
 agent/opencode_affinity.py
+agent/periodic_scheduler.py
 agent/portal_tags.py
 agent/plugin_stream_hooks.py
 agent/process_bootstrap.py
@@ -150,6 +152,7 @@ agent/turn_explainers.py
 agent/turn_facade.py
 agent/turn_facade_lease.py
 agent/turn_failure_copy.py
+agent/turn_liveness.py
 agent/turn_final_response.py
 agent/turn_finalizer.py
 agent/turn_iteration_prep.py

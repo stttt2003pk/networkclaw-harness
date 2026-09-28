@@ -88,6 +88,8 @@ def event_frame(event_type: str, *, sequence: int, request_id: str | None,
         "occurred_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "payload": dict(payload or {}), "end": end,
     }
+    if event_id is None:
+        event_id = f"event-{request_id or 'process'}-{sequence}-{event_type}"
     optional = {
         "tenant_id": tenant_id, "user_id": user_id, "session_id": session_id,
         "turn_id": turn_id, "trace_id": trace_id, "run_id": run_id, "event_id": event_id,

@@ -16,8 +16,14 @@ LOGGER = logging.getLogger(__name__)
 def install_parent_death_guard(expected_parent_pid: int, *, interval_seconds: float = 0.1) -> None:
     """Exit the Harness when its owning chatsvc process disappears."""
 
-    if expected_parent_pid <= 1 or os.getppid() != expected_parent_pid:
-        raise RuntimeError("Harness parent does not match the declared chatsvc owner")
+    actual_parent_pid = os.getppid()
+    # PID 1 is a valid owner inside a single-process container: chatrtmgr is
+    # commonly the container init and therefore the Gateway's real parent.
+    if expected_parent_pid <= 0 or actual_parent_pid != expected_parent_pid:
+        raise RuntimeError(
+            "Harness parent does not match the declared owner "
+            f"(expected={expected_parent_pid}, actual={actual_parent_pid})"
+        )
     if sys.platform.startswith("linux"):
         libc = ctypes.CDLL(None, use_errno=True)
         if libc.prctl(1, signal.SIGTERM) != 0:  # PR_SET_PDEATHSIG
@@ -28,7 +34,9 @@ def install_parent_death_guard(expected_parent_pid: int, *, interval_seconds: fl
     def monitor() -> None:
         while os.getppid() == expected_parent_pid:
             time.sleep(interval_seconds)
-        LOGGER.error("chatsvc parent disappeared; fencing Harness")
+        LOGGER.error("Harness parent disappeared; fencing Harness")
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(1)
         os._exit(75)
 
     threading.Thread(target=monitor, name="parent-death-guard", daemon=True).start()

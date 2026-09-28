@@ -39,6 +39,37 @@ todo, context, provider calls and subagent execution.
 
 ## Remaining work
 
+### E-06 runtime event acceptance increment (2026-09-27)
+
+- Managed patch `0002-host-controlled-foreground-dispatch.patch` keeps native delegation
+  foreground when a host allocation callback is present; ordinary Hermes dispatch is unchanged.
+  The runtime allowlist includes `agent/periodic_scheduler.py`, needed by real children.
+  Managed sync now verifies 773 vendor files, including `agent/turn_liveness.py`
+  for subsequent durable turns and `agent/auxiliary_wire.py` for actual compression calls.
+- Adapter preserves child session identity and registers allocation/parent lineage before
+  child callbacks. Integration captures actual native dual-child grant and deny events through
+  UDS, Gateway, production gRPC/Lobby code and the web2 parser/reducer/render gate.
+- Allocation timeout now emits `delegation.resolved` with deny/timeout reason and rejects
+  late grants under the resolution lock, so the frontend does not retain a pending allocation.
+  The real timeout ledger reaches the same transport/frontend gate without event loss.
+- Verification: `scripts/run_tests.sh -q tests/test_delegation.py
+  tests/test_host_delegation_dispatch.py tests/test_hermes_host_adapter.py` passed 40 tests;
+  final resolution guard rechecked with 5 delegation tests and then the full
+  `scripts/run_tests.sh -q` passed 264 tests plus vendor/runtime closure verification.
+  Complete E-06 combination acceptance is still pending.
+- Adapter now binds native compression `status_callback` to bounded
+  `context.started`/`context.continued`, fences callbacks by turn generation and avoids
+  duplicate result fallback. Every native turn loads its own SessionDB history, including
+  immediate lease admission and Agent cache rebuilds; no second transcript store is added.
+- Verification of this increment: `scripts/run_tests.sh -q tests/test_hermes_host_adapter.py`
+  passed 33 tests plus vendor/runtime closure; the real Integration context scenario passed
+  through UDS/Gateway/gRPC/Lobby with `go test -race` and matching compression versions.
+- Real child failure/tool progress, clarification and usage already have combined ledgers.
+  Frontend context/render confirmation and the Mac matrix passed with 11 ledgers.
+  The external Go platform now saves child lineage in PostgreSQL run admissions;
+  separate OS workers prove replay recovery, cross-tenant rejection and epoch fencing.
+  Remaining: refreshed bundle/image after the durable-child increment and Ubuntu acceptance.
+
 ### 1. External platform contract
 
 Define the production mapping from the platform's durable owner/epoch/lease and workspace records

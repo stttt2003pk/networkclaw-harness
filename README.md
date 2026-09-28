@@ -50,13 +50,23 @@ python3.12 -m venv .venv
 scripts/run_tests.sh
 ```
 
-Run the headless process:
+Run the headless process over stdin/stdout JSONL:
 
 ```bash
 PYTHONPATH=src python -m networkclaw_harness.host
 ```
 
 Each stdout line is one protocol event. Diagnostics are written to stderr.
+
+Run the Gateway over UDS + JSONL for a local process owner:
+
+```bash
+PYTHONPATH=src python -m networkclaw_harness.host --socket-path /tmp/networkclaw-gateway.sock
+```
+
+The owner supplies an absolute socket path and connects with newline-delimited Host Protocol
+frames. The Gateway keeps stdout empty in UDS mode, writes diagnostics to stderr, and removes the
+socket on shutdown or SIGTERM. Keep each session's commands on the connection that opened it.
 
 ## Vendor bootstrap
 
